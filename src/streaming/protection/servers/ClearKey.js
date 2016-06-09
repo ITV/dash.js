@@ -58,7 +58,7 @@ function ClearKey() {
     }
 
     function getHTTPMethod(/*messageType*/) {
-        return 'GET';
+        return 'POST';
     }
 
     function getResponseType(/*keySystemStr*/) {
