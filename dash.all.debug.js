@@ -27203,7 +27203,7 @@ function ProtectionController(config) {
 
         log('DRM: initData:', String.fromCharCode.apply(null, new Uint8Array(abInitData)));
 
-        var supportedKS = protectionKeyController.getSupportedKeySystems(abInitData);
+        var supportedKS = protectionKeyController.getSupportedKeySystems(abInitData, protDataSet);
         if (supportedKS.length === 0) {
             log('DRM: Received needkey event with initData, but we don\'t support any of the key systems!');
             return;
@@ -27473,19 +27473,24 @@ function ProtectionKeyController() {
      *
      * @param {ArrayBuffer} initData Concatenated PSSH data for all DRMs
      * supported by the content
+     * @param {ProtectionData} protDataSet user specified protection data - license server url etc
+     * supported by the content
      * @returns {Array.<Object>} array of objects indicating which supported key
      * systems were found.  Empty array is returned if no
      * supported key systems were found
      * @memberof module:ProtectionKeyController
      * @instance
      */
-    function getSupportedKeySystems(initData) {
+    function getSupportedKeySystems(initData, protDataSet) {
         var ksIdx;
         var supportedKS = [];
         var pssh = _CommonEncryption2['default'].parsePSSHList(initData);
 
         for (ksIdx = 0; ksIdx < keySystems.length; ++ksIdx) {
-            if (keySystems[ksIdx].uuid in pssh) {
+            var keySystemString = keySystems[ksIdx].systemString;
+            var protectionDataForKeySystemPresent = (keySystemString in protDataSet);
+
+            if (keySystems[ksIdx].uuid in pssh && protectionDataForKeySystemPresent) {
                 supportedKS.push({
                     ks: keySystems[ksIdx],
                     initData: pssh[keySystems[ksIdx].uuid]
@@ -29373,14 +29378,7 @@ function ClearKey() {
 
     var instance = undefined;
 
-    function getServerURLFromMessage(url, message /*, messageType*/) {
-        // Build ClearKey server query string
-        var jsonMsg = JSON.parse(String.fromCharCode.apply(null, new Uint8Array(message)));
-        url += '/?';
-        for (var i = 0; i < jsonMsg.kids.length; i++) {
-            url += jsonMsg.kids[i] + '&';
-        }
-        url = url.substring(0, url.length - 1);
+    function getServerURLFromMessage(url /*, message, messageType*/) {
         return url;
     }
 
