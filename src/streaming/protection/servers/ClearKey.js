@@ -46,14 +46,7 @@ function ClearKey() {
 
     let instance;
 
-    function getServerURLFromMessage(url, message/*, messageType*/) {
-        // Build ClearKey server query string
-        var jsonMsg = JSON.parse(String.fromCharCode.apply(null, new Uint8Array(message)));
-        url += '/?';
-        for (var i = 0; i < jsonMsg.kids.length; i++) {
-            url += jsonMsg.kids[i] + '&';
-        }
-        url = url.substring(0, url.length - 1);
+    function getServerURLFromMessage(url/*, message, messageType*/) {
         return url;
     }
 
