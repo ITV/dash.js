@@ -27965,7 +27965,7 @@ function ProtectionKeyController() {
 
         for (ksIdx = 0; ksIdx < keySystems.length; ++ksIdx) {
             var keySystemString = keySystems[ksIdx].systemString;
-            var protectionDataForKeySystemPresent = protDataSet && keySystemString in protDataSet;
+            var protectionDataForKeySystemPresent = (keySystemString in protDataSet);
 
             if (keySystems[ksIdx].uuid in pssh && protectionDataForKeySystemPresent) {
                 supportedKS.push({
@@ -29855,19 +29855,12 @@ function ClearKey() {
 
     var instance = undefined;
 
-    function getServerURLFromMessage(url, message /*, messageType*/) {
-        // Build ClearKey server query string
-        var jsonMsg = JSON.parse(String.fromCharCode.apply(null, new Uint8Array(message)));
-        url += '/?';
-        for (var i = 0; i < jsonMsg.kids.length; i++) {
-            url += jsonMsg.kids[i] + '&';
-        }
-        url = url.substring(0, url.length - 1);
+    function getServerURLFromMessage(url /*, messageType*/) {
         return url;
     }
 
     function getHTTPMethod() /*messageType*/{
-        return 'GET';
+        return 'POST';
     }
 
     function getResponseType() /*keySystemStr*/{
