@@ -28031,7 +28031,7 @@ function ProtectionKeyController() {
         try {
             return clearkeyKeySystem.getClearKeysFromProtectionData(protData, message);
         } catch (error) {
-            log('Failed to retrieve clearkeys from ProtectionData');
+            log('Failed to retrieve clearkeys from ProtectionData: ' + error);
             return null;
         }
     }
