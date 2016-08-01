@@ -218,9 +218,9 @@ function ProtectionKeyController() {
 
         for (ksIdx = 0; ksIdx < keySystems.length; ++ksIdx) {
             var keySystemString = keySystems[ksIdx].systemString;
-            var protectionDataForKeySystemPresent = keySystemString in protDataSet;
+            var shouldNotFilterOutKeySystem = (protDataSet) ? keySystemString in protDataSet : true;
 
-            if (keySystems[ksIdx].uuid in pssh && protectionDataForKeySystemPresent) {
+            if (keySystems[ksIdx].uuid in pssh && shouldNotFilterOutKeySystem) {
                 supportedKS.push({
                     ks: keySystems[ksIdx],
                     initData: pssh[keySystems[ksIdx].uuid]
@@ -284,7 +284,7 @@ function ProtectionKeyController() {
         try {
             return clearkeyKeySystem.getClearKeysFromProtectionData(protData, message);
         } catch (error) {
-            log('Failed to retrieve clearkeys from ProtectionData');
+            log('Failed to retrieve clearkeys from ProtectionData: ' + error);
             return null;
         }
     }

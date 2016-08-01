@@ -28130,6 +28130,9 @@ function KeySystemClearKey() {
      * @memberof KeySystemClearKey
      */
     function getClearKeysFromProtectionData(protectionData, message) {
+        window.console.log('ProtectionData: ' + protectionData);
+        window.console.log('message: ' + message);
+
         var clearkeySet = null;
         if (protectionData) {
             // ClearKey is the only system that does not require a license server URL, so we
