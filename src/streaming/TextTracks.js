@@ -155,7 +155,9 @@ function TextTracks() {
             }
             setCurrentTrackIdx.call(this, defaultIndex);
             if (defaultIndex >= 0) {
-                video.textTracks[defaultIndex].mode = 'showing';
+                for (let idx = 0; idx < video.textTracks.length; idx++) {
+                    video.textTracks[idx].mode = (idx === defaultIndex) ? 'showing' : 'hidden';
+                }
                 this.addCaptions(defaultIndex, 0, null);
             }
             eventBus.trigger(Events.TEXT_TRACKS_ADDED, {index: currentTrackIdx, tracks: textTrackQueue});//send default idx.
@@ -250,15 +252,49 @@ function TextTracks() {
         }
     }
 
+    function convertToPixels(percentage, pixelMeasure) {
+        let percentString = Math.round(0.01 * percentage * pixelMeasure).toString() + 'px';
+        return percentString;
+    }
+
+    function scaleImageCue(activeCue) {
+        var videoWidth = actualVideoWidth;
+        var videoHeight = actualVideoHeight;
+
+        if (videoWidth * videoHeight === 0) {
+            return; //At least one of the measures is still zero
+        }
+
+        if (activeCue.layout) {
+            let layout = activeCue.layout;
+            let left = convertToPixels(layout.left, videoWidth);
+            let top = convertToPixels(layout.top, videoHeight);
+            let width = convertToPixels(layout.width, videoWidth);
+            let height = convertToPixels(layout.height, videoHeight);
+            captionContainer.style.left = left;
+            captionContainer.style.top = top;
+            captionContainer.style.width = width;
+            captionContainer.style.height = height;
+            let image = captionContainer.firstChild;
+            if (image && image.style) {
+                image.style.left = '0px';
+                image.style.top = '0px';
+                image.style.width = width;
+                image.style.height = height;
+            }
+        }
+    }
+
     function scaleCue(activeCue) {
         var videoWidth = actualVideoWidth;
         var videoHeight = actualVideoHeight;
         var key,
             replaceValue,
+            valueFontSize,
+            valueLineHeight,
             elements;
 
         var cellUnit = [videoWidth / activeCue.cellResolution[0], videoHeight / activeCue.cellResolution[1]];
-
         if (activeCue.linePadding) {
             for (key in activeCue.linePadding) {
                 if (activeCue.linePadding.hasOwnProperty(key)) {
@@ -277,7 +313,12 @@ function TextTracks() {
         if (activeCue.fontSize) {
             for (key in activeCue.fontSize) {
                 if (activeCue.fontSize.hasOwnProperty(key)) {
-                    var valueFontSize = activeCue.fontSize[key] / 100;
+                    if (activeCue.fontSize[key][0] === '%') {
+                        valueFontSize = activeCue.fontSize[key][1] / 100;
+                    }else if (activeCue.fontSize[key][0] === 'c') {
+                        valueFontSize = activeCue.fontSize[key][1];
+                    }
+
                     replaceValue  = (valueFontSize * cellUnit[1]).toString();
 
                     if (key !== 'defaultFontSize') {
@@ -296,7 +337,12 @@ function TextTracks() {
         if (activeCue.lineHeight) {
             for (key in activeCue.lineHeight) {
                 if (activeCue.lineHeight.hasOwnProperty(key)) {
-                    var valueLineHeight = activeCue.lineHeight[key] / 100;
+                    if (activeCue.lineHeight[key][0] === '%') {
+                        valueLineHeight = activeCue.lineHeight[key][1] / 100;
+                    }else if (activeCue.fontSize[key][0] === 'c') {
+                        valueLineHeight = activeCue.lineHeight[key][1];
+                    }
+
                     replaceValue = (valueLineHeight * cellUnit[1]).toString();
                     elements = document.getElementsByClassName(key);
                     for (var k = 0; k < elements.length; k++) {
@@ -338,42 +384,42 @@ function TextTracks() {
             track.cellResolution = currentItem.cellResolution;
             track.isFromCEA608 = currentItem.isFromCEA608;
 
-            if (!videoSizeCheckInterval && currentItem.type == 'html') {
+            if (!videoSizeCheckInterval && (currentItem.type === 'html' || currentItem.type === 'image') ) {
                 videoSizeCheckInterval = setInterval(checkVideoSize.bind(this), 500);
             }
 
             //image subtitle extracted from TTML
-            if (currentItem.type == 'image') {
+            if (currentItem.type === 'image') {
                 cue = new Cue(currentItem.start - timeOffset, currentItem.end - timeOffset, '');
                 cue.image = currentItem.data;
                 cue.id = currentItem.id;
                 cue.size = 0; //discard the native display for this subtitles
                 cue.type = 'image'; // active image overlay
-                cue.onenter =  function () {
-                    var img = new Image();
-                    img.id = 'ttmlImage_' + this.id;
-                    img.src = this.image;
-                    img.className = 'cue-image';
-                    if (captionContainer) {
+                cue.layout = currentItem.layout;
+                cue.scaleCue = scaleImageCue.bind(self);
+                cue.onenter = function () {
+                    if (!captionContainer) { // Does not support image captions without a container
+                        return;
+                    }
+                    if (track.mode === 'showing') {
+                        var img = new Image();
+                        img.id = 'ttmlImage_' + this.id;
+                        img.src = this.image;
+                        //img.className = 'cue-image';
+                        img.style.cssText = 'z-index: 2147483648; pointer-events: none; display: block; visibility: visible !important; position: relative !important;';
                         captionContainer.appendChild(img);
-                    } else {
-                        video.parentNode.appendChild(img);
+                        scaleImageCue.call(self, this);
                     }
                 };
 
                 cue.onexit =  function () {
-                    var container,
-                        i,
-                        imgs;
-                    if (captionContainer) {
-                        container = captionContainer;
-                    } else {
-                        container = video.parentNode;
+                    if (!captionContainer) {
+                        return;
                     }
-                    imgs = container.childNodes;
-                    for (i = 0; i < imgs.length; i++) {
-                        if (imgs[i].id == 'ttmlImage_' + this.id) {
-                            container.removeChild(imgs[i]);
+                    let imgs = captionContainer.childNodes;
+                    for (let i = 0; i < imgs.length; i++) {
+                        if (imgs[i].id === 'ttmlImage_' + this.id) {
+                            captionContainer.removeChild(imgs[i]);
                         }
                     }
                 };
@@ -397,7 +443,7 @@ function TextTracks() {
                 captionContainer.style.height = actualVideoHeight + 'px';
 
                 cue.onenter =  function () {
-                    if (track.mode == 'showing') {
+                    if (track.mode === 'showing') {
                         log('Cue ' + this.startTime + '-' + this.endTime + ' : ' + this.cueHTMLElement.id + ' : ' + this.cueHTMLElement.innerText);
                         captionContainer.appendChild(this.cueHTMLElement);
                         scaleCue.call(self, this);
@@ -416,16 +462,16 @@ function TextTracks() {
             else {
                 cue = new Cue(currentItem.start - timeOffset, currentItem.end - timeOffset, currentItem.data);
                 if (currentItem.styles) {
-                    if (currentItem.styles.align !== undefined && cue.hasOwnProperty('align')) {
+                    if (currentItem.styles.align !== undefined && 'align' in cue) {
                         cue.align = currentItem.styles.align;
                     }
-                    if (currentItem.styles.line !== undefined && cue.hasOwnProperty('line')) {
+                    if (currentItem.styles.line !== undefined && 'line' in cue) {
                         cue.line = currentItem.styles.line;
                     }
-                    if (currentItem.styles.position !== undefined && cue.hasOwnProperty('position')) {
+                    if (currentItem.styles.position !== undefined && 'position' in cue) {
                         cue.position = currentItem.styles.position ;
                     }
-                    if (currentItem.styles.size !== undefined && cue.hasOwnProperty('size')) {
+                    if (currentItem.styles.size !== undefined && 'size' in cue) {
                         cue.size = currentItem.styles.size;
                     }
                 }

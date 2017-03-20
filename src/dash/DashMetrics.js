@@ -309,7 +309,10 @@ function DashMetrics() {
         if (!headerStr) {
             return headers;
         }
-        var headerPairs = headerStr.split('\u000d\u000a');
+
+        // Trim headerStr to fix a MS Edge bug with xhr.getAllResponseHeaders method
+        // which send a string starting with a "\n" character
+        var headerPairs = headerStr.trim().split('\u000d\u000a');
         for (var i = 0, ilen = headerPairs.length; i < ilen; i++) {
             var headerPair = headerPairs[i];
             var index = headerPair.indexOf('\u003a\u0020');
@@ -338,17 +341,19 @@ function DashMetrics() {
             adaptationSetArrayIndex,
             representationArrayIndex;
 
-        adaptationSetArray = period.AdaptationSet_asArray;
-        for (adaptationSetArrayIndex = 0; adaptationSetArrayIndex < adaptationSetArray.length; adaptationSetArrayIndex = adaptationSetArrayIndex + 1) {
-            adaptationSet = adaptationSetArray[adaptationSetArrayIndex];
-            representationArray = adaptationSet.Representation_asArray;
-            for (representationArrayIndex = 0; representationArrayIndex < representationArray.length; representationArrayIndex = representationArrayIndex + 1) {
-                representation = representationArray[representationArrayIndex];
-                if (representationId === representation.id) {
-                    if (returnIndex) {
-                        return representationArrayIndex;
-                    } else {
-                        return representation;
+        if (period) {
+            adaptationSetArray = period.AdaptationSet_asArray;
+            for (adaptationSetArrayIndex = 0; adaptationSetArrayIndex < adaptationSetArray.length; adaptationSetArrayIndex = adaptationSetArrayIndex + 1) {
+                adaptationSet = adaptationSetArray[adaptationSetArrayIndex];
+                representationArray = adaptationSet.Representation_asArray;
+                for (representationArrayIndex = 0; representationArrayIndex < representationArray.length; representationArrayIndex = representationArrayIndex + 1) {
+                    representation = representationArray[representationArrayIndex];
+                    if (representationId === representation.id) {
+                        if (returnIndex) {
+                            return representationArrayIndex;
+                        } else {
+                            return representation;
+                        }
                     }
                 }
             }

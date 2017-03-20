@@ -31,6 +31,7 @@
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import FactoryMaker from '../../core/FactoryMaker';
+import InitCache from '../utils/InitCache';
 
 function TextController(config) {
 
@@ -41,12 +42,14 @@ function TextController(config) {
     let errHandler = config.errHandler;
 
     let instance,
+        isBufferingCompleted,
         initialized,
         mediaSource,
         buffer,
         type,
         streamProcessor,
-        representationController;
+        representationController,
+        initCache;
 
     function setup() {
 
@@ -56,6 +59,7 @@ function TextController(config) {
         type = null;
         streamProcessor = null;
         representationController = null;
+        isBufferingCompleted = false;
 
         eventBus.on(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
         eventBus.on(Events.INIT_FRAGMENT_LOADED, onInitFragmentLoaded, this);
@@ -66,6 +70,7 @@ function TextController(config) {
         setMediaSource(source);
         streamProcessor = StreamProcessor;
         representationController = streamProcessor.getRepresentationController();
+        initCache = InitCache(context).getInstance();
     }
 
     /**
@@ -127,13 +132,28 @@ function TextController(config) {
         sourceBufferController.append(buffer, e.chunk);
     }
 
+    function getIsBufferingCompleted() {
+        return isBufferingCompleted;
+    }
+
+    function switchInitData(streamId, quality) {
+        const chunk = initCache.extract(streamId, type, quality);
+        if (chunk) {
+            sourceBufferController.append(chunk);
+        } else {
+            eventBus.trigger(Events.INIT_REQUESTED, {sender: instance});
+        }
+    }
+
     instance = {
         initialize: initialize,
         createBuffer: createBuffer,
         getBuffer: getBuffer,
         setBuffer: setBuffer,
         getStreamProcessor: getStreamProcessor,
+        getIsBufferingCompleted: getIsBufferingCompleted,
         setMediaSource: setMediaSource,
+        switchInitData: switchInitData,
         reset: reset
     };
 

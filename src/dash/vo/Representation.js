@@ -39,6 +39,8 @@ class Representation {
         this.adaptation = null;
         this.segmentInfoType = null;
         this.initialization = null;
+        this.codecs = null;
+        this.codecPrivateData = null;
         this.segmentDuration = NaN;
         this.timescale = 1;
         this.startNumber = 1;
@@ -50,7 +52,20 @@ class Representation {
         this.segmentAvailabilityRange = null;
         this.availableSegmentsNumber = 0;
         this.bandwidth = NaN;
+        this.width = NaN;
+        this.height = NaN;
         this.maxPlayoutRate = NaN;
+    }
+
+    static hasInitialization(r) {
+        return (r.initialization !== null) ||
+            ((r.segmentInfoType !== 'BaseURL' || r.segmentInfoType !== 'SegmentBase') && (r.range !== null));
+    }
+
+    static hasSegments(r) {
+        return r.segmentInfoType !== 'BaseURL' &&
+            r.segmentInfoType !== 'SegmentBase' &&
+            !r.indexRange;
     }
 }
 

@@ -33,15 +33,15 @@ import DashMetrics from '../DashMetrics';
 import TimelineConverter from '../utils/TimelineConverter';
 import AbrController from '../../streaming/controllers/AbrController';
 import PlaybackController from '../../streaming/controllers/PlaybackController';
-import StreamController from '../../streaming/controllers/StreamController';
 import ManifestModel from '../../streaming/models/ManifestModel';
 import MetricsModel from '../../streaming/models/MetricsModel';
-import MediaPlayerModel from '../../streaming/models/MediaPlayerModel';
 import DOMStorage from '../../streaming/utils/DOMStorage';
 import Error from '../../streaming/vo/Error';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
+import MediaPlayerEvents from '../../streaming/MediaPlayerEvents';
 import FactoryMaker from '../../core/FactoryMaker';
+import Representation from '../vo/Representation';
 
 function RepresentationController() {
 
@@ -59,15 +59,13 @@ function RepresentationController() {
         streamProcessor,
         abrController,
         indexHandler,
-        streamController,
         playbackController,
         manifestModel,
         metricsModel,
         domStorage,
         timelineConverter,
         dashManifestModel,
-        dashMetrics,
-        mediaPlayerModel;
+        dashMetrics;
 
     function setup() {
         data = null;
@@ -76,7 +74,6 @@ function RepresentationController() {
         availableRepresentations = [];
 
         abrController = AbrController(context).getInstance();
-        streamController = StreamController(context).getInstance();
         playbackController = PlaybackController(context).getInstance();
         manifestModel = ManifestModel(context).getInstance();
         metricsModel = MetricsModel(context).getInstance();
@@ -84,13 +81,11 @@ function RepresentationController() {
         timelineConverter = TimelineConverter(context).getInstance();
         dashManifestModel = DashManifestModel(context).getInstance();
         dashMetrics = DashMetrics(context).getInstance();
-        mediaPlayerModel = MediaPlayerModel(context).getInstance();
 
-        eventBus.on(Events.QUALITY_CHANGED, onQualityChanged, instance);
+        eventBus.on(Events.QUALITY_CHANGE_REQUESTED, onQualityChanged, instance);
         eventBus.on(Events.REPRESENTATION_UPDATED, onRepresentationUpdated, instance);
         eventBus.on(Events.WALLCLOCK_TIME_UPDATED, onWallclockTimeUpdated, instance);
         eventBus.on(Events.BUFFER_LEVEL_UPDATED, onBufferLevelUpdated, instance);
-        eventBus.on(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, instance);
     }
 
     function setConfig(config) {
@@ -127,18 +122,17 @@ function RepresentationController() {
 
     function reset() {
 
-        eventBus.off(Events.QUALITY_CHANGED, onQualityChanged, instance);
+        eventBus.off(Events.QUALITY_CHANGE_REQUESTED, onQualityChanged, instance);
         eventBus.off(Events.REPRESENTATION_UPDATED, onRepresentationUpdated, instance);
         eventBus.off(Events.WALLCLOCK_TIME_UPDATED, onWallclockTimeUpdated, instance);
         eventBus.off(Events.BUFFER_LEVEL_UPDATED, onBufferLevelUpdated, instance);
-        eventBus.off(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, instance);
+
 
         data = null;
         dataIndex = -1;
         updating = true;
         availableRepresentations = [];
         abrController = null;
-        streamController = null;
         playbackController = null;
         manifestModel = null;
         metricsModel = null;
@@ -146,8 +140,6 @@ function RepresentationController() {
         timelineConverter = null;
         dashManifestModel = null;
         dashMetrics = null;
-        mediaPlayerModel = null;
-
     }
 
     function updateData(dataValue, adaptation, type) {
@@ -213,7 +205,7 @@ function RepresentationController() {
     function isAllRepresentationsUpdated() {
         for (var i = 0, ln = availableRepresentations.length; i < ln; i++) {
             var segmentInfoType = availableRepresentations[i].segmentInfoType;
-            if (availableRepresentations[i].segmentAvailabilityRange === null || availableRepresentations[i].initialization === null ||
+            if (availableRepresentations[i].segmentAvailabilityRange === null || !Representation.hasInitialization(availableRepresentations[i]) ||
                     ((segmentInfoType === 'SegmentBase' || segmentInfoType === 'BaseURL') && !availableRepresentations[i].segments)
             ) {
                 return false;
@@ -266,7 +258,7 @@ function RepresentationController() {
         };
 
         updating = false;
-        eventBus.trigger(Events.AST_IN_FUTURE, { delay: delay });
+        eventBus.trigger(MediaPlayerEvents.AST_IN_FUTURE, { delay: delay });
         setTimeout(update, delay);
     }
 
@@ -283,7 +275,7 @@ function RepresentationController() {
         var err;
         var repSwitch;
 
-        if (r.adaptation.period.mpd.manifest.type == 'dynamic')
+        if (r.adaptation.period.mpd.manifest.type === 'dynamic')
         {
             let segmentAvailabilityTimePeriod = r.segmentAvailabilityRange.end - r.segmentAvailabilityRange.start;
             // We must put things to sleep unless till e.g. the startTime calculation in ScheduleController.onLiveEdgeSearchCompleted fall after the segmentAvailabilityRange.start
@@ -333,25 +325,6 @@ function RepresentationController() {
     function onWallclockTimeUpdated(e) {
         if (e.isDynamic) {
             updateAvailabilityWindow(e.isDynamic);
-        }
-    }
-
-    function onLiveEdgeSearchCompleted(e) {
-        if (e.error) return;
-
-        updateAvailabilityWindow(true);
-        indexHandler.updateRepresentation(currentRepresentation, false);
-
-        // we need to update checkTime after we have found the live edge because its initial value
-        // does not take into account clientServerTimeShift
-        var manifest = manifestModel.getValue();
-        var period = currentRepresentation.adaptation.period;
-        var streamInfo = streamController.getActiveStreamInfo();
-
-        if (streamInfo.isLast) {
-            period.mpd.checkTime = dashManifestModel.getCheckTime(manifest, period);
-            period.duration = dashManifestModel.getEndTimeForLastPeriod(manifestModel.getValue(), period) - period.start;
-            streamInfo.duration = period.duration;
         }
     }
 

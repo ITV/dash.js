@@ -207,7 +207,7 @@ function XHRLoader(cfg) {
 
             xhr = requestModifier.modifyRequestHeader(xhr);
 
-            xhr.withCredentials = mediaPlayerModel.getXHRWithCredentials();
+            xhr.withCredentials = mediaPlayerModel.getXHRWithCredentialsForType(request.type);
 
             xhr.onload = onload;
             xhr.onloadend = onloadend;
@@ -278,7 +278,7 @@ function XHRLoader(cfg) {
             // abort will trigger onloadend which we don't want
             // when deliberately aborting inflight requests -
             // set them to undefined so they are not called
-            x.onloadend = x.onerror = undefined;
+            x.onloadend = x.onerror = x.onprogress = undefined;
             x.abort();
         });
         xhrs = [];

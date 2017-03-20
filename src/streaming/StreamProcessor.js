@@ -35,15 +35,12 @@ import StreamController from './controllers/StreamController';
 import MediaController from './controllers/MediaController';
 import TextController from './controllers/TextController';
 import ScheduleController from './controllers/ScheduleController';
-import RulesController from './rules/RulesController';
 import MediaPlayerModel from './models/MediaPlayerModel';
 import MetricsModel from './models/MetricsModel';
 import FragmentLoader from './FragmentLoader';
 import RequestModifier from './utils/RequestModifier';
 import SourceBufferController from './controllers/SourceBufferController';
 import TextSourceBuffer from './TextSourceBuffer';
-import VirtualBuffer from './VirtualBuffer';
-import MediaSourceController from './controllers/MediaSourceController';
 import DashManifestModel from '../dash/models/DashManifestModel';
 import DashMetrics from '../dash/DashMetrics';
 import RepresentationController from '../dash/controllers/RepresentationController';
@@ -93,8 +90,6 @@ function StreamProcessor(config) {
         abrController.initialize(type, this);
 
         bufferController = createBufferControllerForType(Type);
-        bufferController.initialize(type, mediaSource, this);
-
         scheduleController = ScheduleController(context).create({
             metricsModel: MetricsModel(context).getInstance(),
             manifestModel: manifestModel,
@@ -102,10 +97,10 @@ function StreamProcessor(config) {
             dashMetrics: DashMetrics(context).getInstance(),
             dashManifestModel: DashManifestModel(context).getInstance(),
             timelineConverter: timelineConverter,
-            rulesController: RulesController(context).getInstance(),
             mediaPlayerModel: MediaPlayerModel(context).getInstance(),
         });
 
+        bufferController.initialize(type, mediaSource, this);
         scheduleController.initialize(type, this);
 
         fragmentLoader = FragmentLoader(context).create({
@@ -114,18 +109,14 @@ function StreamProcessor(config) {
             requestModifier: RequestModifier(context).getInstance()
         });
 
-        representationController = RepresentationController(context).create();
-        representationController.initialize(this);
-
         fragmentModel = scheduleController.getFragmentModel();
         fragmentModel.setLoader(fragmentLoader);
+
+        representationController = RepresentationController(context).create();
+        representationController.initialize(this);
     }
 
     function reset(errored) {
-        if (fragmentModel) {
-            fragmentModel.reset();
-            fragmentModel = null;
-        }
 
         indexHandler.reset();
 
@@ -200,7 +191,7 @@ function StreamProcessor(config) {
     }
 
     function getStreamInfo() {
-        return stream.getStreamInfo();
+        return stream ? stream.getStreamInfo() : null;
     }
 
     function updateMediaInfo(manifest, newMediaInfo) {
@@ -270,11 +261,9 @@ function StreamProcessor(config) {
                 manifestModel: manifestModel,
                 sourceBufferController: SourceBufferController(context).getInstance(),
                 errHandler: ErrorHandler(context).getInstance(),
-                mediaSourceController: MediaSourceController(context).getInstance(),
                 streamController: StreamController(context).getInstance(),
                 mediaController: MediaController(context).getInstance(),
                 adapter: adapter,
-                virtualBuffer: VirtualBuffer(context).getInstance(),
                 textSourceBuffer: TextSourceBuffer(context).getInstance(),
             });
         }else {

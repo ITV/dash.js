@@ -30,7 +30,6 @@
  */
 import TextSourceBuffer from '../TextSourceBuffer';
 import MediaController from './MediaController';
-import DashAdapter from '../../dash/DashAdapter';
 import ErrorHandler from '../utils/ErrorHandler';
 import StreamController from './StreamController';
 import TextTracks from '../TextTracks';
@@ -41,7 +40,6 @@ import Error from '../vo/Error';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import FactoryMaker from '../../core/FactoryMaker';
-
 
 const QUOTA_EXCEEDED_ERROR_CODE = 22;
 
@@ -63,18 +61,18 @@ function SourceBufferController() {
             // it definitely doesn't understand 'application/mp4;codecs="stpp"'
             // - currently no browser does, so check for it and use our own
             // implementation. The same is true for codecs="wvtt".
-            if (codec.match(/application\/mp4;\s*codecs="(stpp|wvtt)"/i)) {
+            if (codec.match(/application\/mp4;\s*codecs="(stpp|wvtt).*"/i)) {
                 throw new Error('not really supported');
             }
 
             buffer = mediaSource.addSourceBuffer(codec);
 
         } catch (ex) {
-            if ((mediaInfo.isText) || (codec.indexOf('codecs="stpp"') !== -1) ||  (codec.indexOf('codecs="wvtt"') !== -1) ) {
+            // Note that in the following, the quotes are open to allow for extra text after stpp and wvtt
+            if ((mediaInfo.isText) || (codec.indexOf('codecs="stpp') !== -1) ||  (codec.indexOf('codecs="wvtt') !== -1) ) {
                 buffer = TextSourceBuffer(context).getInstance();
                 buffer.setConfig({
                     errHandler: ErrorHandler(context).getInstance(),
-                    adapter: DashAdapter(context).getInstance(),
                     dashManifestModel: dashManifestModel,
                     mediaController: MediaController(context).getInstance(),
                     videoModel: VideoModel(context).getInstance(),
@@ -279,8 +277,8 @@ function SourceBufferController() {
 
         if (!appendMethod) return;
 
-        try {
-            waitForUpdateEnd(buffer, function () {
+        waitForUpdateEnd(buffer, function () {
+            try {
                 if (acceptsChunk) {
                     // chunk.start is used in calculations by TextSourceBuffer
                     buffer[appendMethod](bytes, chunk);
@@ -291,17 +289,17 @@ function SourceBufferController() {
                 waitForUpdateEnd(buffer, function () {
                     eventBus.trigger(Events.SOURCEBUFFER_APPEND_COMPLETED, {buffer: buffer, bytes: bytes});
                 });
-            });
-        } catch (err) {
-            eventBus.trigger(Events.SOURCEBUFFER_APPEND_COMPLETED, {buffer: buffer, bytes: bytes, error: new Error(err.code, err.message, null)});
-        }
+            } catch (err) {
+                eventBus.trigger(Events.SOURCEBUFFER_APPEND_COMPLETED, {buffer: buffer, bytes: bytes, error: new Error(err.code, err.message, null)});
+            }
+        });
     }
 
     function remove(buffer, start, end, mediaSource) {
 
-        try {
-            // make sure that the given time range is correct. Otherwise we will get InvalidAccessError
-            waitForUpdateEnd(buffer, function () {
+        // make sure that the given time range is correct. Otherwise we will get InvalidAccessError
+        waitForUpdateEnd(buffer, function () {
+            try {
                 if ((start >= 0) && (end > start) && (mediaSource.readyState !== 'ended')) {
                     buffer.remove(start, end);
                 }
@@ -309,16 +307,18 @@ function SourceBufferController() {
                 waitForUpdateEnd(buffer, function () {
                     eventBus.trigger(Events.SOURCEBUFFER_REMOVE_COMPLETED, {buffer: buffer, from: start, to: end});
                 });
-            });
-        } catch (err) {
-            eventBus.trigger(Events.SOURCEBUFFER_REMOVE_COMPLETED, {buffer: buffer, from: start, to: end, error: new Error(err.code, err.message, null)});
-        }
+            } catch (err) {
+                eventBus.trigger(Events.SOURCEBUFFER_REMOVE_COMPLETED, {buffer: buffer, from: start, to: end, error: new Error(err.code, err.message, null)});
+            }
+        });
     }
 
     function abort(mediaSource, buffer) {
         try {
             if (mediaSource.readyState === 'open') {
                 buffer.abort();
+            } else if (buffer.setTextTrack && mediaSource.readyState === 'ended') {
+                buffer.abort(); //The cues need to be removed from the TextSourceBuffer via a call to abort()
             }
         } catch (ex) {
         }

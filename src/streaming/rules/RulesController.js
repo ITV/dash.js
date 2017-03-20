@@ -31,11 +31,9 @@
 import RulesContext from './RulesContext';
 import SwitchRequest from './SwitchRequest';
 import ABRRulesCollection from './abr/ABRRulesCollection';
-import SynchronizationRulesCollection from './synchronization/SynchronizationRulesCollection';
 import FactoryMaker from '../../core/FactoryMaker';
 
 const ABR_RULE = 0;
-const SYNC_RULE = 1;
 
 function RulesController() {
 
@@ -54,14 +52,11 @@ function RulesController() {
         if (config.abrRulesCollection) {
             rules[ABR_RULE] = config.abrRulesCollection;
         }
-
-        if (config.synchronizationRulesCollection) {
-            rules[SYNC_RULE] = config.synchronizationRulesCollection;
-        }
     }
 
-    function applyRules(rulesArr, streamProcessor, callback, current, overrideFunc) {
+    function applyRules(rulesArr, streamProcessor, callback, current, playbackQuality, overrideFunc) {
         var values = {};
+        var reasons = {};
         var rule,
             i;
 
@@ -71,10 +66,16 @@ function RulesController() {
 
         var callbackFunc = function (result) {
             var value,
+                reason,
                 confidence;
 
             if (result.value !== SwitchRequest.NO_CHANGE) {
-                values[result.priority] = overrideFunc(values[result.priority], result.value);
+                var newValue = overrideFunc(values[result.priority], result.value);
+                if (newValue !== values[result.priority]) {
+                    // change in value
+                    values[result.priority] = newValue; // === result.value
+                    reasons[result.priority] = result.reason;
+                }
             }
 
             if (--rulesCount) return;
@@ -82,16 +83,19 @@ function RulesController() {
             if (values[SwitchRequest.WEAK] !== SwitchRequest.NO_CHANGE) {
                 confidence = SwitchRequest.WEAK;
                 value = values[SwitchRequest.WEAK];
+                reason = reasons[SwitchRequest.WEAK];
             }
 
             if (values[SwitchRequest.DEFAULT] !== SwitchRequest.NO_CHANGE) {
                 confidence = SwitchRequest.DEFAULT;
                 value = values[SwitchRequest.DEFAULT];
+                reason = reasons[SwitchRequest.DEFAULT];
             }
 
             if (values[SwitchRequest.STRONG] !== SwitchRequest.NO_CHANGE) {
                 confidence = SwitchRequest.STRONG;
                 value = values[SwitchRequest.STRONG];
+                reason = reasons[SwitchRequest.STRONG];
             }
 
             if (confidence != SwitchRequest.STRONG &&
@@ -99,9 +103,11 @@ function RulesController() {
                 confidence = SwitchRequest.DEFAULT;
             }
 
-
-            callback({ value: (value !== undefined) ? value : current, confidence: confidence, reason: result.reason});
-
+            if (value !== undefined) {
+                callback({ value: value, confidence: confidence, reason: reason});
+            } else {
+                callback({ value: current, confidence: confidence, reason: {name: 'NO_CHANGE'}});
+            }
         };
 
         values[SwitchRequest.STRONG] = SwitchRequest.NO_CHANGE;
@@ -116,11 +122,7 @@ function RulesController() {
 
     function reset() {
         var abrRules = rules[ABR_RULE];
-        var synchronizationRules = rules[SYNC_RULE];
-        var allRules = (abrRules.getRules(ABRRulesCollection.QUALITY_SWITCH_RULES) || []).
-            concat(abrRules.getRules(ABRRulesCollection.ABANDON_FRAGMENT_RULES) || []).
-            concat(synchronizationRules.getRules(SynchronizationRulesCollection.TIME_SYNCHRONIZED_RULES) || []).
-            concat(synchronizationRules.getRules(SynchronizationRulesCollection.BEST_GUESS_RULES) || []);
+        var allRules = (abrRules.getRules(ABRRulesCollection.QUALITY_SWITCH_RULES) || []).concat(abrRules.getRules(ABRRulesCollection.ABANDON_FRAGMENT_RULES) || []);
         var ln = allRules.length;
 
         var rule,
@@ -154,5 +156,4 @@ function RulesController() {
 RulesController.__dashjs_factory_name = 'RulesController';
 let factory =  FactoryMaker.getSingletonFactory(RulesController);
 factory.ABR_RULE = ABR_RULE;
-factory.SYNC_RULE = SYNC_RULE;
 export default factory;

@@ -66,15 +66,16 @@ function DashManifestModel() {
 
         if ((adaptation.Representation_asArray.length > 0) &&
             (adaptation.Representation_asArray[0].hasOwnProperty('codecs'))) {
+            // Just check the start of the codecs string
             var codecs = adaptation.Representation_asArray[0].codecs;
-            if (codecs === 'stpp' || codecs === 'wvtt') {
+            if (codecs.search('stpp') === 0 || codecs.search('wvtt') === 0) {
                 return type === 'fragmentedText';
             }
         }
 
         if (col) {
             if (col.length > 1) {
-                return (type == 'muxed');
+                return (type === 'muxed');
             } else if (col[0] && col[0].contentType === type) {
                 result = true;
                 found = true;
@@ -324,15 +325,12 @@ function DashManifestModel() {
         return representation.bandwidth;
     }
 
-    function getRefreshDelay(manifest) {
-        var delay = NaN;
-        var minDelay = 2;
-
+    function getManifestUpdatePeriod(manifest, latencyOfLastUpdate = 0) {
+        let delay = NaN;
         if (manifest.hasOwnProperty('minimumUpdatePeriod')) {
-            delay = Math.max(parseFloat(manifest.minimumUpdatePeriod), minDelay);
+            delay = manifest.minimumUpdatePeriod;
         }
-
-        return delay;
+        return isNaN(delay) ? delay : Math.max(delay - latencyOfLastUpdate, 1);
     }
 
     function getRepresentationCount(adaptation) {
@@ -381,8 +379,21 @@ function DashManifestModel() {
                 representation.id = r.id;
             }
 
+            if (r.hasOwnProperty('codecs')) {
+                representation.codecs = r.codecs;
+            }
+            if (r.hasOwnProperty('codecPrivateData')) {
+                representation.codecPrivateData = r.codecPrivateData;
+            }
+
             if (r.hasOwnProperty('bandwidth')) {
                 representation.bandwidth = r.bandwidth;
+            }
+            if (r.hasOwnProperty('width')) {
+                representation.width = r.width;
+            }
+            if (r.hasOwnProperty('height')) {
+                representation.height = r.height;
             }
             if (r.hasOwnProperty('maxPlayoutRate')) {
                 representation.maxPlayoutRate = r.maxPlayoutRate;
@@ -423,40 +434,43 @@ function DashManifestModel() {
                         .join(r.bandwidth).split('$RepresentationID$').join(r.id);
                 }
             } else {
-                segmentInfo = r.BaseURL;
                 representation.segmentInfoType = 'BaseURL';
             }
 
-            if (segmentInfo.hasOwnProperty('Initialization')) {
-                initialization = segmentInfo.Initialization;
-                if (initialization.hasOwnProperty('sourceURL')) {
-                    representation.initialization = initialization.sourceURL;
-                } else if (initialization.hasOwnProperty('range')) {
-                    representation.range = initialization.range;
+            if (segmentInfo) {
+                if (segmentInfo.hasOwnProperty('Initialization')) {
+                    initialization = segmentInfo.Initialization;
+                    if (initialization.hasOwnProperty('sourceURL')) {
+                        representation.initialization = initialization.sourceURL;
+                    } else if (initialization.hasOwnProperty('range')) {
+                        representation.range = initialization.range;
+                        // initialization source url will be determined from
+                        // BaseURL when resolved at load time.
+                    }
+                } else if (r.hasOwnProperty('mimeType') && getIsTextTrack(r.mimeType)) {
+                    representation.range = 0;
                 }
-            } else if (r.hasOwnProperty('mimeType') && getIsTextTrack(r.mimeType)) {
-                representation.range = 0;
-            }
 
-            if (segmentInfo.hasOwnProperty('timescale')) {
-                representation.timescale = segmentInfo.timescale;
-            }
-            if (segmentInfo.hasOwnProperty('duration')) {
-                // TODO according to the spec @maxSegmentDuration specifies the maximum duration of any Segment in any Representation in the Media Presentation
-                // It is also said that for a SegmentTimeline any @d value shall not exceed the value of MPD@maxSegmentDuration, but nothing is said about
-                // SegmentTemplate @duration attribute. We need to find out if @maxSegmentDuration should be used instead of calculated duration if the the duration
-                // exceeds @maxSegmentDuration
-                //representation.segmentDuration = Math.min(segmentInfo.duration / representation.timescale, adaptation.period.mpd.maxSegmentDuration);
-                representation.segmentDuration = segmentInfo.duration / representation.timescale;
-            }
-            if (segmentInfo.hasOwnProperty('startNumber')) {
-                representation.startNumber = segmentInfo.startNumber;
-            }
-            if (segmentInfo.hasOwnProperty('indexRange')) {
-                representation.indexRange = segmentInfo.indexRange;
-            }
-            if (segmentInfo.hasOwnProperty('presentationTimeOffset')) {
-                representation.presentationTimeOffset = segmentInfo.presentationTimeOffset / representation.timescale;
+                if (segmentInfo.hasOwnProperty('timescale')) {
+                    representation.timescale = segmentInfo.timescale;
+                }
+                if (segmentInfo.hasOwnProperty('duration')) {
+                    // TODO according to the spec @maxSegmentDuration specifies the maximum duration of any Segment in any Representation in the Media Presentation
+                    // It is also said that for a SegmentTimeline any @d value shall not exceed the value of MPD@maxSegmentDuration, but nothing is said about
+                    // SegmentTemplate @duration attribute. We need to find out if @maxSegmentDuration should be used instead of calculated duration if the the duration
+                    // exceeds @maxSegmentDuration
+                    //representation.segmentDuration = Math.min(segmentInfo.duration / representation.timescale, adaptation.period.mpd.maxSegmentDuration);
+                    representation.segmentDuration = segmentInfo.duration / representation.timescale;
+                }
+                if (segmentInfo.hasOwnProperty('startNumber')) {
+                    representation.startNumber = segmentInfo.startNumber;
+                }
+                if (segmentInfo.hasOwnProperty('indexRange')) {
+                    representation.indexRange = segmentInfo.indexRange;
+                }
+                if (segmentInfo.hasOwnProperty('presentationTimeOffset')) {
+                    representation.presentationTimeOffset = segmentInfo.presentationTimeOffset / representation.timescale;
+                }
             }
 
             representation.MSETimeOffset = timelineConverter.calcMSETimeOffset(representation);
@@ -552,7 +566,7 @@ function DashManifestModel() {
             }
 
             if (vo !== null) {
-                vo.id = getPeriodId(p);
+                vo.id = getPeriodId(p, i);
             }
 
             if (vo !== null && p.hasOwnProperty('duration')) {
@@ -585,12 +599,12 @@ function DashManifestModel() {
         return periods;
     }
 
-    function getPeriodId(p) {
+    function getPeriodId(p, i) {
         if (!p) {
             throw new Error('Period cannot be null or undefined');
         }
 
-        var id = Period.DEFAULT_ID;
+        let id = Period.DEFAULT_ID + '_' + i;
 
         if (p.hasOwnProperty('id') && p.id !== '__proto__') {
             id = p.id;
@@ -614,6 +628,14 @@ function DashManifestModel() {
             mpd.availabilityEndTime = new Date(manifest.availabilityEndTime.getTime());
         }
 
+        if (manifest.hasOwnProperty('minimumUpdatePeriod')) {
+            mpd.minimumUpdatePeriod = manifest.minimumUpdatePeriod;
+        }
+
+        if (manifest.hasOwnProperty('mediaPresentationDuration')) {
+            mpd.mediaPresentationDuration = manifest.mediaPresentationDuration;
+        }
+
         if (manifest.hasOwnProperty('suggestedPresentationDelay')) {
             mpd.suggestedPresentationDelay = manifest.suggestedPresentationDelay;
         }
@@ -629,46 +651,19 @@ function DashManifestModel() {
         return mpd;
     }
 
-    function getFetchTime(manifest, period) {
-        // FetchTime is defined as the time at which the server processes the request for the MPD from the client.
-        // TODO The client typically should not use the time at which it actually successfully received the MPD, but should
-        // take into account delay due to MPD delivery and processing. The fetch is considered successful fetching
-        // either if the client obtains an updated MPD or the client verifies that the MPD has not been updated since the previous fetching.
-
-        return timelineConverter.calcPresentationTimeFromWallTime(manifest.loadedTime, period);
-    }
-
-    function getCheckTime(manifest, period) {
-        var checkTime = NaN;
-        var fetchTime;
-
-        // If the MPD@minimumUpdatePeriod attribute in the client is provided, then the check time is defined as the
-        // sum of the fetch time of this operating MPD and the value of this attribute,
-        // i.e. CheckTime = FetchTime + MPD@minimumUpdatePeriod.
-        if (manifest.hasOwnProperty('minimumUpdatePeriod')) {
-            fetchTime = getFetchTime(manifest, period);
-            checkTime = fetchTime + manifest.minimumUpdatePeriod;
-        }
-        // TODO If the MPD@minimumUpdatePeriod attribute in the client is not provided, external means are used to
-        // determine CheckTime, such as a priori knowledge, or HTTP cache headers, etc.
-
-        return checkTime;
-    }
 
     function getEndTimeForLastPeriod(manifest, period) {
-        var periodEnd;
-        var checkTime = getCheckTime(manifest, period);
+        const isDynamic = getIsDynamic(manifest);
 
-        // if the MPD@mediaPresentationDuration attribute is present, then PeriodEndTime is defined as the end time of the Media Presentation.
-        // if the MPD@mediaPresentationDuration attribute is not present, then PeriodEndTime is defined as FetchTime + MPD@minimumUpdatePeriod
-
+        let periodEnd;
         if (manifest.mediaPresentationDuration) {
             periodEnd = manifest.mediaPresentationDuration;
-        } else if (!isNaN(checkTime)) {
-            // in this case the Period End Time should match CheckTime
-            periodEnd = checkTime;
+        } else if (period.duration) {
+            periodEnd = period.duration;
+        } else if (isDynamic) {
+            periodEnd = Number.POSITIVE_INFINITY;
         } else {
-            throw new Error('Must have @mediaPresentationDuration or @minimumUpdatePeriod on MPD or an explicit @duration on the last period.');
+            throw new Error('Must have @mediaPresentationDuratio on MPD or an explicit @duration on the last period.');
         }
 
         return periodEnd;
@@ -747,6 +742,7 @@ function DashManifestModel() {
     }
 
     function getEventStreamForAdaptationSet(manifest, adaptation) {
+        if (!adaptation || !manifest) return [];
         var inbandStreams = manifest.Period_asArray[adaptation.period.index].
             AdaptationSet_asArray[adaptation.index].InbandEventStream_asArray;
 
@@ -911,18 +907,14 @@ function DashManifestModel() {
         getIsDVB: getIsDVB,
         getDuration: getDuration,
         getBandwidth: getBandwidth,
-        getRefreshDelay: getRefreshDelay,
+        getManifestUpdatePeriod: getManifestUpdatePeriod,
         getRepresentationCount: getRepresentationCount,
         getBitrateListForAdaptation: getBitrateListForAdaptation,
         getRepresentationFor: getRepresentationFor,
         getRepresentationsForAdaptation: getRepresentationsForAdaptation,
         getAdaptationsForPeriod: getAdaptationsForPeriod,
         getRegularPeriods: getRegularPeriods,
-        getPeriodId: getPeriodId,
         getMpd: getMpd,
-        getFetchTime: getFetchTime,
-        getCheckTime: getCheckTime,
-        getEndTimeForLastPeriod: getEndTimeForLastPeriod,
         getEventsForPeriod: getEventsForPeriod,
         getEventStreams: getEventStreams,
         getEventStreamForAdaptationSet: getEventStreamForAdaptationSet,

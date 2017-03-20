@@ -28,132 +28,186 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import SwitchRequest from '../SwitchRequest';
 import BufferController from '../../controllers/BufferController';
 import AbrController from '../../controllers/AbrController';
 import MediaPlayerModel from '../../models/MediaPlayerModel';
 import {HTTPRequest} from '../../vo/metrics/HTTPRequest';
 import FactoryMaker from '../../../core/FactoryMaker';
 import Debug from '../../../core/Debug';
+import SwitchRequest from '../SwitchRequest.js';
 
 function ThroughputRule(config) {
 
-    const AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_LIVE = 2;
-    const AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_VOD = 3;
+    const MAX_MEASUREMENTS_TO_KEEP = 20;
+    const AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_LIVE = 3;
+    const AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_VOD = 4;
+    const AVERAGE_LATENCY_SAMPLES = AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_VOD;
+    const CACHE_LOAD_THRESHOLD_VIDEO = 50;
+    const CACHE_LOAD_THRESHOLD_AUDIO = 5;
+    const CACHE_LOAD_THRESHOLD_LATENCY = 50;
+    const THROUGHPUT_DECREASE_SCALE = 1.3;
+    const THROUGHPUT_INCREASE_SCALE = 1.3;
 
-    let context = this.context;
-    let log = Debug(context).getInstance().log;
-    let dashMetrics = config.dashMetrics;
-    let metricsModel = config.metricsModel;
+    const context = this.context;
+    const log = Debug(context).getInstance().log;
+    const dashMetrics = config.dashMetrics;
+    const metricsModel = config.metricsModel;
 
-    let instance,
-        throughputArray,
+    let throughputArray,
+        latencyArray,
         mediaPlayerModel;
 
     function setup() {
         throughputArray = [];
+        latencyArray = [];
         mediaPlayerModel = MediaPlayerModel(context).getInstance();
     }
 
-    function storeLastRequestThroughputByType(type, lastRequestThroughput) {
+    function storeLastRequestThroughputByType(type, throughput) {
         throughputArray[type] = throughputArray[type] || [];
-        if (lastRequestThroughput !== Infinity &&
-            lastRequestThroughput !== throughputArray[type][throughputArray[type].length - 1]) {
-            throughputArray[type].push(lastRequestThroughput);
+        throughputArray[type].push(throughput);
+    }
+
+    function storeLatency(mediaType, latency) {
+        if (!latencyArray[mediaType]) {
+            latencyArray[mediaType] = [];
         }
+        latencyArray[mediaType].push(latency);
+
+        if (latencyArray[mediaType].length > AVERAGE_LATENCY_SAMPLES) {
+            return latencyArray[mediaType].shift();
+        }
+
+        return undefined;
+    }
+
+    function getAverageLatency(mediaType) {
+        let average;
+        if (latencyArray[mediaType] && latencyArray[mediaType].length > 0) {
+            average = latencyArray[mediaType].reduce((a, b) => { return a + b; }) / latencyArray[mediaType].length;
+        }
+
+        return average;
+    }
+
+    function getSample(type, isDynamic) {
+        let size = Math.min(throughputArray[type].length, isDynamic ? AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_LIVE : AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_VOD);
+        const sampleArray = throughputArray[type].slice(size * -1, throughputArray[type].length);
+        if (sampleArray.length > 1) {
+            sampleArray.reduce((a, b) => {
+                if (a * THROUGHPUT_INCREASE_SCALE <= b || a >= b * THROUGHPUT_DECREASE_SCALE) {
+                    size++;
+                }
+                return b;
+            });
+        }
+        size = Math.min(throughputArray[type].length, size);
+        return throughputArray[type].slice(size * -1, throughputArray[type].length);
     }
 
     function getAverageThroughput(type, isDynamic) {
-        var averageThroughput = 0;
-        var sampleAmount = isDynamic ? AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_LIVE : AVERAGE_THROUGHPUT_SAMPLE_AMOUNT_VOD;
-        var arr = throughputArray[type];
-        var len = arr.length;
-
-        sampleAmount = len < sampleAmount ? len : sampleAmount;
-
-        if (len > 0) {
-            var startValue = len - sampleAmount;
-            var totalSampledValue = 0;
-
-            for (var i = startValue; i < len; i++) {
-                totalSampledValue += arr[i];
-            }
-            averageThroughput = totalSampledValue / sampleAmount;
+        const sample = getSample(type, isDynamic);
+        let averageThroughput = 0;
+        if (sample.length > 0) {
+            const totalSampledValue = sample.reduce((a, b) => a + b, 0);
+            averageThroughput = totalSampledValue / sample.length;
         }
-
-        if (arr.length > sampleAmount) {
-            arr.shift();
+        if (throughputArray[type].length >= MAX_MEASUREMENTS_TO_KEEP) {
+            throughputArray[type].shift();
         }
-
         return (averageThroughput / 1000 ) * mediaPlayerModel.getBandwidthSafetyFactor();
     }
 
-    function execute (rulesContext, callback) {
-        var downloadTime;
-        var bytes;
-        var averageThroughput;
-        var lastRequestThroughput;
+    function isCachedResponse(latency, downloadTime, mediaType) {
+        let ret = false;
 
-        var mediaInfo = rulesContext.getMediaInfo();
-        var mediaType = mediaInfo.type;
-        var current = rulesContext.getCurrentValue();
-        var metrics = metricsModel.getReadOnlyMetricsFor(mediaType);
-        var streamProcessor = rulesContext.getStreamProcessor();
-        var abrController = streamProcessor.getABRController();
-        var isDynamic = streamProcessor.isDynamic();
-        var lastRequest = dashMetrics.getCurrentHttpRequest(metrics);
-        var bufferStateVO = (metrics.BufferState.length > 0) ? metrics.BufferState[metrics.BufferState.length - 1] : null;
-        var bufferLevelVO = (metrics.BufferLevel.length > 0) ? metrics.BufferLevel[metrics.BufferLevel.length - 1] : null;
-        var switchRequest = SwitchRequest(context).create(SwitchRequest.NO_CHANGE, SwitchRequest.WEAK, {name: ThroughputRule.__dashjs_factory_name});
-
-        if (!metrics || !lastRequest || lastRequest.type !== HTTPRequest.MEDIA_SEGMENT_TYPE ||
-            !bufferStateVO || !bufferLevelVO ) {
-
-            callback(switchRequest);
-            return;
-
+        if (latency < CACHE_LOAD_THRESHOLD_LATENCY) {
+            ret = true;
         }
+
+        if (!ret) {
+            switch (mediaType) {
+                case 'video':
+                    ret = downloadTime < CACHE_LOAD_THRESHOLD_VIDEO;
+                    break;
+                case 'audio':
+                    ret = downloadTime < CACHE_LOAD_THRESHOLD_AUDIO;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        return ret;
+    }
+
+    function getMaxIndex(rulesContext) {
+        const mediaInfo = rulesContext.getMediaInfo();
+        const mediaType = mediaInfo.type;
+        const metrics = metricsModel.getReadOnlyMetricsFor(mediaType);
+        const streamProcessor = rulesContext.getStreamProcessor();
+        const abrController = streamProcessor.getABRController();
+        const isDynamic = streamProcessor.isDynamic();
+        const lastRequest = dashMetrics.getCurrentHttpRequest(metrics);
+        const bufferStateVO = (metrics.BufferState.length > 0) ? metrics.BufferState[metrics.BufferState.length - 1] : null;
+        const hasRichBuffer = rulesContext.hasRichBuffer();
+        const switchRequest = SwitchRequest(context).create();
+
+        if (!metrics || !lastRequest || lastRequest.type !== HTTPRequest.MEDIA_SEGMENT_TYPE || !bufferStateVO || hasRichBuffer) {
+            return switchRequest;
+        }
+
+        let downloadTimeInMilliseconds;
+        let latencyTimeInMilliseconds;
 
         if (lastRequest.trace && lastRequest.trace.length) {
-            downloadTime = (lastRequest._tfinish.getTime() - lastRequest.tresponse.getTime()) / 1000;
 
-            bytes = lastRequest.trace.reduce(function (a, b) {
-                return a + b.b[0];
-            }, 0);
+            latencyTimeInMilliseconds = (lastRequest.tresponse.getTime() - lastRequest.trequest.getTime()) || 1;
+            downloadTimeInMilliseconds = (lastRequest._tfinish.getTime() - lastRequest.tresponse.getTime()) || 1; //Make sure never 0 we divide by this value. Avoid infinity!
 
-            lastRequestThroughput = Math.round(bytes * 8) / downloadTime;
-            storeLastRequestThroughputByType(mediaType, lastRequestThroughput);
-        }
+            const bytes = lastRequest.trace.reduce((a, b) => a + b.b[0], 0);
 
-        averageThroughput = Math.round(getAverageThroughput(mediaType, isDynamic));
-        abrController.setAverageThroughput(mediaType, averageThroughput);
+            const lastRequestThroughput = Math.round((bytes * 8) / (downloadTimeInMilliseconds / 1000));
 
-        if (abrController.getAbandonmentStateFor(mediaType) !== AbrController.ABANDON_LOAD) {
-
-            if (bufferStateVO.state === BufferController.BUFFER_LOADED || isDynamic) {
-                var newQuality = abrController.getQualityForBitrate(mediaInfo, averageThroughput);
-                streamProcessor.getScheduleController().setTimeToLoadDelay(0);
-                switchRequest.value = newQuality;
-                switchRequest.priority = SwitchRequest.DEFAULT;
-                switchRequest.reason.throughput = averageThroughput;
+            let throughput;
+            let latency;
+            //Prevent cached fragment loads from skewing the average throughput value - allow first even if cached to set allowance for ABR rules..
+            if (isCachedResponse(latencyTimeInMilliseconds, downloadTimeInMilliseconds, mediaType)) {
+                if (!throughputArray[mediaType] || !latencyArray[mediaType]) {
+                    throughput = lastRequestThroughput / 1000;
+                    latency = latencyTimeInMilliseconds;
+                } else {
+                    throughput = getAverageThroughput(mediaType, isDynamic);
+                    latency = getAverageLatency(mediaType);
+                }
+            } else {
+                storeLastRequestThroughputByType(mediaType, lastRequestThroughput);
+                throughput = getAverageThroughput(mediaType, isDynamic);
+                storeLatency(mediaType, latencyTimeInMilliseconds);
+                latency = getAverageLatency(mediaType, isDynamic);
             }
 
-            if (switchRequest.value !== SwitchRequest.NO_CHANGE && switchRequest.value !== current) {
-                log('ThroughputRule requesting switch to index: ', switchRequest.value, 'type: ',mediaType, ' Priority: ',
-                    switchRequest.priority === SwitchRequest.DEFAULT ? 'Default' :
-                        switchRequest.priority === SwitchRequest.STRONG ? 'Strong' : 'Weak', 'Average throughput', Math.round(averageThroughput), 'kbps');
+            abrController.setAverageThroughput(mediaType, throughput);
+
+            if (abrController.getAbandonmentStateFor(mediaType) !== AbrController.ABANDON_LOAD) {
+
+                if (bufferStateVO.state === BufferController.BUFFER_LOADED || isDynamic) {
+                    switchRequest.value = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
+                    streamProcessor.getScheduleController().setTimeToLoadDelay(0);
+                    log('ThroughputRule requesting switch to index: ', switchRequest.value, 'type: ',mediaType, 'Average throughput', Math.round(throughput), 'kbps');
+                    switchRequest.reason = {throughput: throughput, latency: latency};
+                }
             }
         }
-
-        callback(switchRequest);
+        return switchRequest;
     }
 
     function reset() {
         setup();
     }
 
-    instance = {
-        execute: execute,
+    const instance = {
+        getMaxIndex: getMaxIndex,
         reset: reset
     };
 
