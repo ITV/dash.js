@@ -28,22 +28,22 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import ErrorHandler from '../../streaming/utils/ErrorHandler';
 import FactoryMaker from '../../core/FactoryMaker';
 import Debug from '../../core/Debug';
 import ObjectIron from '../../../externals/objectiron';
 import X2JS from '../../../externals/xml2json';
+import StringMatcher from './matchers/StringMatcher';
 import DurationMatcher from './matchers/DurationMatcher';
 import DateTimeMatcher from './matchers/DateTimeMatcher';
 import NumericMatcher from './matchers/NumericMatcher';
 import RepresentationBaseValuesMap from './maps/RepresentationBaseValuesMap';
 import SegmentValuesMap from './maps/SegmentValuesMap';
 
-function DashParser(/*config*/) {
+function DashParser(config) {
 
     const context = this.context;
     const log = Debug(context).getInstance().log;
-    const errorHandler = ErrorHandler(context).getInstance();
+    const errorHandler = config.errorHandler;
 
     let instance,
         matchers,
@@ -54,10 +54,20 @@ function DashParser(/*config*/) {
         matchers = [
             new DurationMatcher(),
             new DateTimeMatcher(),
-            new NumericMatcher()
+            new NumericMatcher(),
+            new StringMatcher()   // last in list to take precedence over NumericMatcher
         ];
 
-        converter = new X2JS(matchers, '', true);
+        converter = new X2JS({
+            escapeMode:         false,
+            attributePrefix:    '',
+            arrayAccessForm:    'property',
+            emptyNodeForm:      'object',
+            stripWhitespaces:   false,
+            enableToStringFunc: false,
+            ignoreRoot:         true,
+            matchers:           matchers
+        });
 
         objectIron = new ObjectIron([
             new RepresentationBaseValuesMap(),
@@ -65,8 +75,24 @@ function DashParser(/*config*/) {
         ]);
     }
 
-    function parse(data, xlinkController) {
-        var manifest;
+    function checkConfig() {
+        if (!errorHandler || !errorHandler.hasOwnProperty('manifestError')) {
+            throw new Error('Missing config parameter(s)');
+        }
+    }
+
+    function getMatchers() {
+        return matchers;
+    }
+
+    function getIron() {
+        return objectIron;
+    }
+
+    function parse(data) {
+        let manifest;
+
+        checkConfig();
 
         try {
             const startTime = window.performance.now();
@@ -83,9 +109,6 @@ function DashParser(/*config*/) {
 
             const ironedTime = window.performance.now();
 
-            xlinkController.setMatchers(matchers);
-            xlinkController.setIron(objectIron);
-
             log('Parsing complete: ( xml2json: ' + (jsonTime - startTime).toPrecision(3) + 'ms, objectiron: ' + (ironedTime - jsonTime).toPrecision(3) + 'ms, total: ' + ((ironedTime - startTime) / 1000).toPrecision(3) + 's)');
         } catch (err) {
             errorHandler.manifestError('parsing the manifest failed', 'parse', data, err);
@@ -96,7 +119,9 @@ function DashParser(/*config*/) {
     }
 
     instance = {
-        parse: parse
+        parse: parse,
+        getMatchers: getMatchers,
+        getIron: getIron
     };
 
     setup();

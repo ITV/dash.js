@@ -40,6 +40,7 @@ import Events from '../../core/events/Events';
 function BaseURLController() {
 
     let instance;
+    let dashManifestModel;
 
     const context = this.context;
     const eventBus = EventBus(context).getInstance();
@@ -59,6 +60,20 @@ function BaseURLController() {
         eventBus.on(Events.SERVICE_LOCATION_BLACKLIST_CHANGED, onBlackListChanged, instance);
     }
 
+    function setConfig(config) {
+        if (config.baseURLTreeModel) {
+            baseURLTreeModel = config.baseURLTreeModel;
+        }
+
+        if (config.baseURLSelector) {
+            baseURLSelector = config.baseURLSelector;
+        }
+
+        if (config.dashManifestModel) {
+            dashManifestModel = config.dashManifestModel;
+        }
+    }
+
     function update(manifest) {
         baseURLTreeModel.update(manifest);
         baseURLSelector.chooseSelectorFromManifest(manifest);
@@ -72,15 +87,13 @@ function BaseURLController() {
 
             if (b) {
                 if (!urlUtils.isRelative(b.url)) {
-                    if (urlUtils.isPathAbsolute(b.url)) {
-                        p.url = urlUtils.parseOrigin(p.url) + b.url;
-                    } else {
-                        p.url = b.url;
-                        p.serviceLocation = b.serviceLocation;
-                    }
+                    p.url = b.url;
+                    p.serviceLocation = b.serviceLocation;
                 } else {
-                    p.url += b.url;
+                    p.url = urlUtils.resolve(b.url, p.url);
                 }
+            } else {
+                return new BaseURL();
             }
 
             return p;
@@ -97,13 +110,23 @@ function BaseURLController() {
     }
 
     function initialize(data) {
+
+        // report config to baseURLTreeModel and baseURLSelector
+        baseURLTreeModel.setConfig({
+            dashManifestModel: dashManifestModel
+        });
+        baseURLSelector.setConfig({
+            dashManifestModel: dashManifestModel
+        });
+
         update(data);
     }
 
     instance = {
         reset: reset,
         initialize: initialize,
-        resolve: resolve
+        resolve: resolve,
+        setConfig: setConfig
     };
 
     setup();

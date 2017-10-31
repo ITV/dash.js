@@ -40,11 +40,83 @@ import FactoryMaker from '../../core/FactoryMaker';
  */
 function URLUtils() {
 
-    let instance;
+    let resolveFunction;
 
-    const absUrl = /^(?:(?:[a-z]+:)?\/)?\//i;
+    const schemeRegex = /^[a-z][a-z0-9+\-.]*:/i;
     const httpUrlRegex = /^https?:\/\//i;
-    const originRegex = /^(https?:\/\/[^\/]+)\/?/i;
+    const originRegex = /^([a-z][a-z0-9+\-.]*:\/\/[^\/]+)\/?/i;
+
+    /**
+     * Resolves a url given an optional base url
+     * Uses window.URL to do the resolution.
+     *
+     * @param {string} url
+     * @param {string} [baseUrl]
+     * @return {string}
+     * @memberof module:URLUtils
+     * @instance
+     * @private
+     */
+    const nativeURLResolver = (url, baseUrl) => {
+        try {
+            // this will throw if baseurl is undefined, invalid etc
+            return new window.URL(url, baseUrl).toString();
+        } catch (e) {
+            return url;
+        }
+    };
+
+    /**
+     * Resolves a url given an optional base url
+     * Does not resolve ./, ../ etc but will do enough to construct something
+     * which will satisfy XHR etc when window.URL is not available ie
+     * IE11/node etc.
+     *
+     * @param {string} url
+     * @param {string} [baseUrl]
+     * @return {string}
+     * @memberof module:URLUtils
+     * @instance
+     * @private
+     */
+    const dumbURLResolver = (url, baseUrl) => {
+        let baseUrlParseFunc = parseBaseUrl;
+
+        if (!baseUrl) {
+            return url;
+        }
+
+        if (!isRelative(url)) {
+            return url;
+        }
+
+        if (isPathAbsolute(url)) {
+            baseUrlParseFunc = parseOrigin;
+        }
+
+        if (isSchemeRelative(url)) {
+            baseUrlParseFunc = parseScheme;
+        }
+
+        const base = baseUrlParseFunc(baseUrl);
+        const joinChar =
+              base.charAt(base.length - 1) !== '/' &&
+              url.charAt(0) !== '/' ?
+              '/' : '';
+
+        return [base, url].join(joinChar);
+    };
+
+    function setup() {
+        try {
+            const u = new window.URL('x', 'http://y'); //jshint ignore:line
+            resolveFunction = nativeURLResolver;
+        } catch (e) {
+            // must be IE11/Node etc
+        } finally {
+            resolveFunction = resolveFunction || dumbURLResolver;
+        }
+    }
 
     /**
      * Returns a string that contains the Base URL of a URL, if determinable.
@@ -54,16 +126,23 @@ function URLUtils() {
      * @instance
      */
     function parseBaseUrl(url) {
-        var base = '';
+        const slashIndex = url.indexOf('/');
+        const lastSlashIndex = url.lastIndexOf('/');
 
-        if (url.indexOf('/') !== -1) {
+        if (slashIndex !== -1) {
+            // if there is only '//'
+            if (lastSlashIndex === slashIndex + 1) {
+                return url;
+            }
+
             if (url.indexOf('?') !== -1) {
                 url = url.substring(0, url.indexOf('?'));
             }
-            base = url.substring(0, url.lastIndexOf('/') + 1);
+
+            return url.substring(0, lastSlashIndex + 1);
         }
 
-        return base;
+        return '';
     }
 
     /**
@@ -85,6 +164,23 @@ function URLUtils() {
     }
 
     /**
+     * Returns a string that contains the scheme of a URL, if determinable.
+     * @param {string} url - full url
+     * @return {string}
+     * @memberof module:URLUtils
+     * @instance
+     */
+    function parseScheme(url) {
+        const matches = url.match(schemeRegex);
+
+        if (matches) {
+            return matches[0];
+        }
+
+        return '';
+    }
+
+    /**
      * Determines whether the url is relative.
      * @return {bool}
      * @param {string} url
@@ -92,9 +188,8 @@ function URLUtils() {
      * @instance
      */
     function isRelative(url) {
-        return !absUrl.test(url);
+        return !schemeRegex.test(url);
     }
-
 
     /**
      * Determines whether the url is path-absolute.
@@ -104,7 +199,18 @@ function URLUtils() {
      * @instance
      */
     function isPathAbsolute(url) {
-        return absUrl.test(url) && url.charAt(0) === '/';
+        return isRelative(url) && url.charAt(0) === '/';
+    }
+
+    /**
+     * Determines whether the url is scheme-relative.
+     * @return {bool}
+     * @param {string} url
+     * @memberof module:URLUtils
+     * @instance
+     */
+    function isSchemeRelative(url) {
+        return url.indexOf('//') === 0;
     }
 
     /**
@@ -119,12 +225,29 @@ function URLUtils() {
         return httpUrlRegex.test(url);
     }
 
-    instance = {
-        parseBaseUrl:   parseBaseUrl,
-        parseOrigin:    parseOrigin,
-        isRelative:     isRelative,
-        isPathAbsolute: isPathAbsolute,
-        isHTTPURL:      isHTTPURL
+    /**
+     * Resolves a url given an optional base url
+     * @return {string}
+     * @param {string} url
+     * @param {string} [baseUrl]
+     * @memberof module:URLUtils
+     * @instance
+     */
+    function resolve(url, baseUrl) {
+        return resolveFunction(url, baseUrl);
+    }
+
+    setup();
+
+    const instance = {
+        parseBaseUrl:       parseBaseUrl,
+        parseOrigin:        parseOrigin,
+        parseScheme:        parseScheme,
+        isRelative:         isRelative,
+        isPathAbsolute:     isPathAbsolute,
+        isSchemeRelative:   isSchemeRelative,
+        isHTTPURL:          isHTTPURL,
+        resolve:            resolve
     };
 
     return instance;

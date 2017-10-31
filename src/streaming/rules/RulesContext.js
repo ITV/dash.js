@@ -34,9 +34,17 @@ import FactoryMaker from '../../core/FactoryMaker';
 function RulesContext(config) {
 
     let instance;
-    let representationInfo = config.streamProcessor.getCurrentRepresentationInfo();
-    let sp = config.streamProcessor;
-    let currentValue = config.currentValue;
+    const abrController = config.abrController;
+    const streamProcessor = config.streamProcessor;
+    const representationInfo = config.streamProcessor.getCurrentRepresentationInfo();
+    const switchHistory = config.switchHistory;
+    const droppedFramesHistory = config.droppedFramesHistory;
+    const currentRequest = config.currentRequest;
+    const bufferOccupancyABR = config.useBufferOccupancyABR;
+
+    function getMediaType() {
+        return representationInfo.mediaInfo.type;
+    }
 
     function getStreamInfo() {
         return representationInfo.mediaInfo.streamInfo;
@@ -46,29 +54,45 @@ function RulesContext(config) {
         return representationInfo.mediaInfo;
     }
 
-    function getTrackInfo() {
+    function getRepresentationInfo() {
         return representationInfo;
     }
 
-    function getCurrentValue() {
-        return currentValue;
-    }
-
-    function getManifestInfo() {
-        return representationInfo.mediaInfo.streamInfo.manifestInfo;
-    }
-
     function getStreamProcessor() {
-        return sp;
+        return streamProcessor;
+    }
+
+    function getAbrController() {
+        return abrController;
+    }
+
+    function getSwitchHistory() {
+        return switchHistory;
+    }
+
+    function getDroppedFramesHistory() {
+        return droppedFramesHistory;
+    }
+
+    function getCurrentRequest() {
+        return currentRequest;
+    }
+
+    function useBufferOccupancyABR() {
+        return bufferOccupancyABR;
     }
 
     instance = {
-        getStreamInfo: getStreamInfo,
+        getMediaType: getMediaType,
         getMediaInfo: getMediaInfo,
-        getTrackInfo: getTrackInfo,
-        getCurrentValue: getCurrentValue,
-        getManifestInfo: getManifestInfo,
-        getStreamProcessor: getStreamProcessor
+        getDroppedFramesHistory: getDroppedFramesHistory,
+        getCurrentRequest: getCurrentRequest,
+        getSwitchHistory: getSwitchHistory,
+        getStreamInfo: getStreamInfo,
+        getStreamProcessor: getStreamProcessor,
+        getAbrController: getAbrController,
+        getRepresentationInfo: getRepresentationInfo,
+        useBufferOccupancyABR: useBufferOccupancyABR
     };
 
     return instance;

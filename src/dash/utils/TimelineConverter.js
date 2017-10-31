@@ -30,7 +30,6 @@
  */
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
-
 import FactoryMaker from '../../core/FactoryMaker';
 
 function TimelineConverter() {
@@ -44,12 +43,7 @@ function TimelineConverter() {
         expectedLiveEdge;
 
     function initialize() {
-
-        clientServerTimeShift = 0;
-        isClientServerTimeSyncCompleted = false;
-        expectedLiveEdge = NaN;
-
-        eventBus.on(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
+        resetInitialSettings();
         eventBus.on(Events.TIME_SYNCHRONIZATION_COMPLETED, onTimeSyncComplete, this);
     }
 
@@ -65,6 +59,10 @@ function TimelineConverter() {
         return clientServerTimeShift;
     }
 
+    function setClientTimeOffset(value) {
+        clientServerTimeShift = value;
+    }
+
     function getExpectedLiveEdge() {
         return expectedLiveEdge;
     }
@@ -74,7 +72,7 @@ function TimelineConverter() {
     }
 
     function calcAvailabilityTimeFromPresentationTime(presentationTime, mpd, isDynamic, calculateEnd) {
-        var availabilityTime = NaN;
+        let availabilityTime = NaN;
 
         if (calculateEnd) {
             //@timeShiftBufferDepth specifies the duration of the time shifting buffer that is guaranteed
@@ -106,25 +104,26 @@ function TimelineConverter() {
     }
 
     function calcPresentationTimeFromWallTime(wallTime, period) {
+        //console.log("XXX", wallTime.getTime() - period.mpd.availabilityStartTime.getTime(), clientServerTimeShift * 1000, clientServerTimeShift, period.mpd.availabilityStartTime.getTime())
         return ((wallTime.getTime() - period.mpd.availabilityStartTime.getTime() + clientServerTimeShift * 1000) / 1000);
     }
 
     function calcPresentationTimeFromMediaTime(mediaTime, representation) {
-        var periodStart = representation.adaptation.period.start;
-        var presentationOffset = representation.presentationTimeOffset;
+        const periodStart = representation.adaptation.period.start;
+        const presentationOffset = representation.presentationTimeOffset;
 
         return mediaTime + (periodStart - presentationOffset);
     }
 
     function calcMediaTimeFromPresentationTime(presentationTime, representation) {
-        var periodStart = representation.adaptation.period.start;
-        var presentationOffset = representation.presentationTimeOffset;
+        const periodStart = representation.adaptation.period.start;
+        const presentationOffset = representation.presentationTimeOffset;
 
         return presentationTime - periodStart + presentationOffset;
     }
 
     function calcWallTimeForSegment(segment, isDynamic) {
-        var suggestedPresentationDelay,
+        let suggestedPresentationDelay,
             displayStartTime,
             wallTime;
 
@@ -137,79 +136,65 @@ function TimelineConverter() {
         return wallTime;
     }
 
-    function calcSegmentAvailabilityRange(representation, isDynamic) {
-        var start = representation.adaptation.period.start;
-        var end = start + representation.adaptation.period.duration;
-        var range = { start: start, end: end };
-        var d = representation.segmentDuration || ((representation.segments && representation.segments.length) ? representation.segments[representation.segments.length - 1].duration : 0);
+    function calcSegmentAvailabilityRange(voRepresentation, isDynamic) {
 
-        var checkTime,
-            now;
-
+        // Static Range Finder
+        const voPeriod = voRepresentation.adaptation.period;
+        const range = { start: voPeriod.start, end: voPeriod.start + voPeriod.duration };
         if (!isDynamic) return range;
 
-        if (!isClientServerTimeSyncCompleted && representation.segmentAvailabilityRange) {
-            return representation.segmentAvailabilityRange;
+        if (!isClientServerTimeSyncCompleted && voRepresentation.segmentAvailabilityRange) {
+            return voRepresentation.segmentAvailabilityRange;
         }
 
-        checkTime = representation.adaptation.period.mpd.checkTime;
-        now = calcPresentationTimeFromWallTime(new Date(), representation.adaptation.period);
-        //the Media Segment list is further restricted by the CheckTime together with the MPD attribute
-        // MPD@timeShiftBufferDepth such that only Media Segments for which the sum of the start time of the
-        // Media Segment and the Period start time falls in the interval [NOW- MPD@timeShiftBufferDepth - @duration, min(CheckTime, NOW)] are included.
-        start = Math.max((now - representation.adaptation.period.mpd.timeShiftBufferDepth), representation.adaptation.period.start);
-        var timeAnchor = (isNaN(checkTime) ? now : Math.min(checkTime, now));
-        var periodEnd = representation.adaptation.period.start + representation.adaptation.period.duration;
-        end = (timeAnchor >= periodEnd  && (timeAnchor - d) < periodEnd ? periodEnd : timeAnchor) - d;
-        //end = (isNaN(checkTime) ? now : Math.min(checkTime, now)) - d;
-        range = {start: start, end: end};
+        //Dyanmic Range Finder
+        const d = voRepresentation.segmentDuration || (voRepresentation.segments && voRepresentation.segments.length ? voRepresentation.segments[voRepresentation.segments.length - 1].duration : 0);
+        const now = calcPresentationTimeFromWallTime(new Date(), voPeriod);
+        const periodEnd = voPeriod.start + voPeriod.duration;
+        range.start = Math.max((now - voPeriod.mpd.timeShiftBufferDepth), voPeriod.start);
+        range.end = now >= periodEnd && now - d < periodEnd ? periodEnd - d : now - d;
 
         return range;
     }
 
     function calcPeriodRelativeTimeFromMpdRelativeTime(representation, mpdRelativeTime) {
-        var periodStartTime = representation.adaptation.period.start;
+        const periodStartTime = representation.adaptation.period.start;
         return mpdRelativeTime - periodStartTime;
     }
 
-    function calcMpdRelativeTimeFromPeriodRelativeTime(representation, periodRelativeTime) {
-        var periodStartTime = representation.adaptation.period.start;
-
-        return periodRelativeTime + periodStartTime;
-    }
-
-    function onLiveEdgeSearchCompleted(e) {
-        if (isClientServerTimeSyncCompleted || e.error) return;
-
-        // the difference between expected and actual live edge time is supposed to be a difference between client
-        // and server time as well
-        clientServerTimeShift += e.liveEdge - (expectedLiveEdge + e.searchTime);
-        isClientServerTimeSyncCompleted = true;
-    }
-
+    /*
+    * We need to figure out if we want to timesync for segmentTimeine where useCalculatedLiveEdge = true
+    * seems we figure out client offset based on logic in liveEdgeFinder getLiveEdge timelineConverter.setClientTimeOffset(liveEdge - representationInfo.DVRWindow.end);
+    * FYI StreamController's onManifestUpdated entry point to timeSync
+    * */
     function onTimeSyncComplete(e) {
-        if (isClientServerTimeSyncCompleted || e.error) {
-            return;
+
+        if (isClientServerTimeSyncCompleted) return;
+
+        if (e.offset !== undefined) {
+
+            setClientTimeOffset(e.offset / 1000);
+            isClientServerTimeSyncCompleted = true;
+
         }
-
-        clientServerTimeShift = e.offset / 1000;
-
-        isClientServerTimeSyncCompleted = true;
     }
 
     function calcMSETimeOffset(representation) {
         // The MSEOffset is offset from AST for media. It is Period@start - presentationTimeOffset
-        var presentationOffset = representation.presentationTimeOffset;
-        var periodStart = representation.adaptation.period.start;
+        const presentationOffset = representation.presentationTimeOffset;
+        const periodStart = representation.adaptation.period.start;
         return (periodStart - presentationOffset);
     }
 
-    function reset() {
-        eventBus.off(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
-        eventBus.off(Events.TIME_SYNCHRONIZATION_COMPLETED, onTimeSyncComplete, this);
+    function resetInitialSettings() {
         clientServerTimeShift = 0;
         isClientServerTimeSyncCompleted = false;
         expectedLiveEdge = NaN;
+    }
+
+    function reset() {
+        eventBus.off(Events.TIME_SYNCHRONIZATION_COMPLETED, onTimeSyncComplete, this);
+        resetInitialSettings();
     }
 
     instance = {
@@ -217,6 +202,7 @@ function TimelineConverter() {
         isTimeSyncCompleted: isTimeSyncCompleted,
         setTimeSyncCompleted: setTimeSyncCompleted,
         getClientTimeOffset: getClientTimeOffset,
+        setClientTimeOffset: setClientTimeOffset,
         getExpectedLiveEdge: getExpectedLiveEdge,
         setExpectedLiveEdge: setExpectedLiveEdge,
         calcAvailabilityStartTimeFromPresentationTime: calcAvailabilityStartTimeFromPresentationTime,
@@ -224,7 +210,6 @@ function TimelineConverter() {
         calcPresentationTimeFromWallTime: calcPresentationTimeFromWallTime,
         calcPresentationTimeFromMediaTime: calcPresentationTimeFromMediaTime,
         calcPeriodRelativeTimeFromMpdRelativeTime: calcPeriodRelativeTimeFromMpdRelativeTime,
-        calcMpdRelativeTimeFromPeriodRelativeTime: calcMpdRelativeTimeFromPeriodRelativeTime,
         calcMediaTimeFromPresentationTime: calcMediaTimeFromPresentationTime,
         calcSegmentAvailabilityRange: calcSegmentAvailabilityRange,
         calcWallTimeForSegment: calcWallTimeForSegment,

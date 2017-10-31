@@ -40,7 +40,6 @@
  */
 import KeyPair from '../vo/KeyPair';
 import ClearKeyKeySet from '../vo/ClearKeyKeySet';
-import FactoryMaker from '../../../core/FactoryMaker';
 
 function ClearKey() {
 
@@ -62,11 +61,11 @@ function ClearKey() {
         if (!serverResponse.hasOwnProperty('keys')) {
             return null;
         }
-        var keyPairs = [];
+        let keyPairs = [];
         for (let i = 0; i < serverResponse.keys.length; i++) {
-            var keypair = serverResponse.keys[i];
-            var keyid = keypair.kid.replace(/=/g, '');
-            var key = keypair.k.replace(/=/g, '');
+            let keypair = serverResponse.keys[i];
+            let keyid = keypair.kid.replace(/=/g, '');
+            let key = keypair.k.replace(/=/g, '');
 
             keyPairs.push(new KeyPair(keyid, key));
         }
@@ -82,11 +81,11 @@ function ClearKey() {
         getHTTPMethod: getHTTPMethod,
         getResponseType: getResponseType,
         getLicenseMessage: getLicenseMessage,
-        getErrorResponse: getErrorResponse,
+        getErrorResponse: getErrorResponse
     };
 
     return instance;
 }
 
 ClearKey.__dashjs_factory_name = 'ClearKey';
-export default FactoryMaker.getSingletonFactory(ClearKey);
+export default dashjs.FactoryMaker.getSingletonFactory(ClearKey); /* jshint ignore:line */

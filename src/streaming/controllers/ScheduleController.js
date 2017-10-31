@@ -28,47 +28,41 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
+import Constants from '../constants/Constants';
 import {PlayListTrace} from '../vo/metrics/PlayList';
-import PlaybackController from './PlaybackController';
 import AbrController from './AbrController';
 import BufferController from './BufferController';
-import MediaController from './MediaController';
 import BufferLevelRule from '../rules/scheduling/BufferLevelRule';
 import NextFragmentRequestRule from '../rules/scheduling/NextFragmentRequestRule';
-import TextSourceBuffer from '../TextSourceBuffer';
-import MetricsModel from '../models/MetricsModel';
 import FragmentModel from '../models/FragmentModel';
-import DashMetrics from '../../dash/DashMetrics';
-import DashAdapter from '../../dash/DashAdapter';
-import SourceBufferController from '../controllers/SourceBufferController';
-import LiveEdgeFinder from '../utils/LiveEdgeFinder';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import FactoryMaker from '../../core/FactoryMaker';
-import StreamController from '../controllers/StreamController';
 import Debug from '../../core/Debug';
 
 function ScheduleController(config) {
 
     const context = this.context;
-    const log = Debug(context).getInstance().log;
     const eventBus = EventBus(context).getInstance();
     const metricsModel = config.metricsModel;
-    const manifestModel = config.manifestModel;
     const adapter = config.adapter;
     const dashMetrics = config.dashMetrics;
     const dashManifestModel = config.dashManifestModel;
     const timelineConverter = config.timelineConverter;
     const mediaPlayerModel = config.mediaPlayerModel;
+    const abrController = config.abrController;
+    const playbackController = config.playbackController;
+    const streamController = config.streamController;
+    const textController = config.textController;
+    const sourceBufferController = config.sourceBufferController;
+    const type = config.type;
+    const streamProcessor = config.streamProcessor;
 
     let instance,
-        type,
-        ready,
+        log,
         fragmentModel,
-        isDynamic,
         currentRepresentationInfo,
-        initialPlayback,
+        initialRequest,
         isStopped,
         playListMetrics,
         playListTraceMetrics,
@@ -77,68 +71,44 @@ function ScheduleController(config) {
         timeToLoadDelay,
         scheduleTimeout,
         seekTarget,
-        playbackController,
-        mediaController,
-        abrController,
-        streamProcessor,
-        streamController,
-        fragmentController,
-        liveEdgeFinder,
-        bufferController,
         bufferLevelRule,
         nextFragmentRequestRule,
         scheduleWhilePaused,
         lastQualityIndex,
+        topQualityIndex,
         lastInitQuality,
-        replaceRequestArray;
+        replaceRequestArray,
+        switchTrack;
 
     function setup() {
-        initialPlayback = true;
-        lastInitQuality = NaN;
-        lastQualityIndex = NaN;
-        replaceRequestArray = [];
-        isStopped = false;
-        playListMetrics = null;
-        playListTraceMetrics = null;
-        playListTraceMetricsClosed = true;
-        isFragmentProcessingInProgress = false;
-        timeToLoadDelay = 0;
-        seekTarget = NaN;
+        log = Debug(context).getInstance().log.bind(instance);
+
+        resetInitialSettings();
     }
 
-    function initialize(Type, StreamProcessor) {
-        type = Type;
-        streamProcessor = StreamProcessor;
-        liveEdgeFinder = LiveEdgeFinder(context).getInstance();
-        playbackController = PlaybackController(context).getInstance();
-        mediaController = MediaController(context).getInstance();
-        abrController = AbrController(context).getInstance();
-        streamController = StreamController(context).getInstance();
-        fragmentController = streamProcessor.getFragmentController();
-        bufferController = streamProcessor.getBufferController();
-        fragmentModel = fragmentController.getModel(type);
-        fragmentModel.setScheduleController(this);
-        isDynamic = streamProcessor.isDynamic();
+    function initialize() {
+        fragmentModel = streamProcessor.getFragmentModel();
         scheduleWhilePaused = mediaPlayerModel.getScheduleWhilePaused();
 
         bufferLevelRule = BufferLevelRule(context).create({
-            dashMetrics: DashMetrics(context).getInstance(),
-            metricsModel: MetricsModel(context).getInstance(),
-            textSourceBuffer: TextSourceBuffer(context).getInstance()
+            abrController: abrController,
+            dashMetrics: dashMetrics,
+            metricsModel: metricsModel,
+            mediaPlayerModel: mediaPlayerModel,
+            textController: textController
         });
 
         nextFragmentRequestRule = NextFragmentRequestRule(context).create({
-            adapter: DashAdapter(context).getInstance(),
-            sourceBufferController: SourceBufferController(context).getInstance(),
-            textSourceBuffer: TextSourceBuffer(context).getInstance()
-
+            adapter: adapter,
+            sourceBufferController: sourceBufferController,
+            textController: textController
         });
 
         if (dashManifestModel.getIsTextTrack(type)) {
             eventBus.on(Events.TIMED_TEXT_REQUESTED, onTimedTextRequested, this);
         }
 
-        eventBus.on(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
+        //eventBus.on(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
         eventBus.on(Events.QUALITY_CHANGE_REQUESTED, onQualityChanged, this);
         eventBus.on(Events.DATA_UPDATE_STARTED, onDataUpdateStarted, this);
         eventBus.on(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
@@ -150,72 +120,108 @@ function ScheduleController(config) {
         eventBus.on(Events.BYTES_APPENDED, onBytesAppended, this);
         eventBus.on(Events.INIT_REQUESTED, onInitRequested, this);
         eventBus.on(Events.QUOTA_EXCEEDED, onQuotaExceeded, this);
-        eventBus.on(Events.BUFFER_LEVEL_STATE_CHANGED, onBufferLevelStateChanged, this);
-        eventBus.on(Events.PLAYBACK_STARTED, onPlaybackStarted, this);
         eventBus.on(Events.PLAYBACK_SEEKING, onPlaybackSeeking, this);
+        eventBus.on(Events.PLAYBACK_STARTED, onPlaybackStarted, this);
         eventBus.on(Events.PLAYBACK_RATE_CHANGED, onPlaybackRateChanged, this);
         eventBus.on(Events.PLAYBACK_TIME_UPDATED, onPlaybackTimeUpdated, this);
         eventBus.on(Events.URL_RESOLUTION_FAILED, onURLResolutionFailed, this);
         eventBus.on(Events.FRAGMENT_LOADING_ABANDONED, onFragmentLoadingAbandoned, this);
     }
 
+    function isStarted() {
+        return (isStopped === false);
+    }
+
     function start() {
-        if (!ready) return;
+        if (!currentRepresentationInfo || streamProcessor.isBufferingCompleted()) {
+            return;
+        }
+
         addPlaylistTraceMetrics();
         isStopped = false;
 
-        if (initialPlayback) {
-            getInitRequest(currentRepresentationInfo.quality);
-        } else {
-            //schedule will be first called after the init segment is appended. But in the case where we stop and start
-            //the ScheduleController E.g dateUpdate on manifest refresh for live streams. we need to start schedule again.
-            startScheduleTimer(0);
+        if (initialRequest) {
+            initialRequest = false;
         }
 
-        if (initialPlayback) {
-            initialPlayback = false;
-        }
+        startScheduleTimer(0);
+
         log('Schedule controller starting for ' + type);
     }
 
     function stop() {
-        if (isStopped) return;
+        if (isStopped) {
+            return;
+        }
+
         isStopped = true;
         clearTimeout(scheduleTimeout);
         log('Schedule controller stopping for ' + type);
     }
 
-    function schedule() {
+    function hasTopQualityChanged(type, id) {
+        topQualityIndex[id] = topQualityIndex[id] || {};
+        const newTopQualityIndex = abrController.getTopQualityIndexFor(type, id);
 
-        if (isStopped || isFragmentProcessingInProgress || !bufferController || playbackController.isPaused() && !scheduleWhilePaused) return;
+        if (topQualityIndex[id][type] != newTopQualityIndex) {
+            log('Top quality' + type + ' index has changed from ' + topQualityIndex[id][type] + ' to ' + newTopQualityIndex);
+            topQualityIndex[id][type] = newTopQualityIndex;
+            return true;
+        }
+        return false;
+
+    }
+
+    function schedule() {
+        if (isStopped || isFragmentProcessingInProgress || !streamProcessor.getBufferController() || playbackController.isPaused() && !scheduleWhilePaused) {
+            return;
+        }
 
         validateExecutedFragmentRequest();
 
         const isReplacement = replaceRequestArray.length > 0;
-        const readyToLoad = bufferLevelRule.execute(streamProcessor, type, streamController.isVideoTrackPresent());
+        if (switchTrack || isReplacement ||
+            hasTopQualityChanged(currentRepresentationInfo.mediaInfo.type, streamProcessor.getStreamInfo().id) ||
+            bufferLevelRule.execute(streamProcessor, type, streamController.isVideoTrackPresent())) {
 
-        if (readyToLoad || isReplacement) {
             const getNextFragment = function () {
-                if (currentRepresentationInfo.quality !== lastInitQuality) {
+                log('ScheduleController - getNextFragment');
+                const fragmentController = streamProcessor.getFragmentController();
+                if (switchTrack) {
+                    log('ScheduleController - switch track has been asked, get init request for ' + type + ' with representationid = ' + currentRepresentationInfo.id);
+                    streamProcessor.switchInitData(currentRepresentationInfo.id);
+                    switchTrack = false;
+                } else if (currentRepresentationInfo.quality !== lastInitQuality) {
+                    log('ScheduleController - quality has changed, get init request');
                     lastInitQuality = currentRepresentationInfo.quality;
-                    bufferController.switchInitData(streamProcessor.getStreamInfo().id, currentRepresentationInfo.quality);
-                } else {
 
-                    const request = nextFragmentRequestRule.execute(streamProcessor, replaceRequestArray.shift());
-                    if (request) {
-                        fragmentModel.executeRequest(request);
-                    } else { //Use case - Playing at the bleeding live edge and frag is not available yet. Cycle back around.
-                        isFragmentProcessingInProgress = false;
-                        startScheduleTimer(250);
+                    streamProcessor.switchInitData(currentRepresentationInfo.id);
+                } else {
+                    const replacement = replaceRequestArray.shift();
+
+                    if (fragmentController.isInitializationRequest(replacement)) {
+                        //to be sure the specific init segment had not already been loaded.
+                        streamProcessor.switchInitData(replacement.representationId);
+                    } else {
+                        const request = nextFragmentRequestRule.execute(streamProcessor, replacement);
+                        if (request) {
+                            log('ScheduleController - getNextFragment - request is ' + request.url);
+                            fragmentModel.executeRequest(request);
+                        } else { //Use case - Playing at the bleeding live edge and frag is not available yet. Cycle back around.
+                            log('getNextFragment - Playing at the bleeding live edge and frag is not available yet');
+                            isFragmentProcessingInProgress = false;
+                            startScheduleTimer(500);
+                        }
                     }
                 }
             };
 
             isFragmentProcessingInProgress = true;
-            if (isReplacement) {
+            if (isReplacement || switchTrack) {
                 getNextFragment();
             } else {
-                abrController.getPlaybackQuality(streamProcessor, getNextFragment);
+                abrController.checkPlaybackQuality(type);
+                getNextFragment();
             }
 
         } else {
@@ -227,16 +233,23 @@ function ScheduleController(config) {
         //Validate that the fragment request executed and appended into the source buffer is as
         // good of quality as the current quality and is the correct media track.
         const safeBufferLevel = currentRepresentationInfo.fragmentDuration * 1.5;
-        const request = fragmentModel.getRequests({state: FragmentModel.FRAGMENT_MODEL_EXECUTED, time: playbackController.getTime() + safeBufferLevel, threshold: 0})[0];
+        const request = fragmentModel.getRequests({
+            state: FragmentModel.FRAGMENT_MODEL_EXECUTED,
+            time: playbackController.getTime() + safeBufferLevel,
+            threshold: 0
+        })[0];
 
         if (request && replaceRequestArray.indexOf(request) === -1 && !dashManifestModel.getIsTextTrack(type)) {
-            if (!mediaController.isCurrentTrack(request.mediaInfo) || mediaPlayerModel.getFastSwitchEnabled() && request.quality < currentRepresentationInfo.quality &&
-                bufferController.getBufferLevel() >= safeBufferLevel && abrController.getAbandonmentStateFor(type) !== AbrController.ABANDON_LOAD) {
+            const fastSwitchModeEnabled = mediaPlayerModel.getFastSwitchEnabled();
+            const bufferLevel = streamProcessor.getBufferLevel();
+            const abandonmentState = abrController.getAbandonmentStateFor(type);
+
+            if (fastSwitchModeEnabled && request.quality < currentRepresentationInfo.quality && bufferLevel >= safeBufferLevel && abandonmentState !== AbrController.ABANDON_LOAD) {
                 replaceRequest(request);
                 log('Reloading outdated fragment at index: ', request.index);
             } else if (request.quality > currentRepresentationInfo.quality) {
                 //The buffer has better quality it in then what we would request so set append point to end of buffer!!
-                setSeekTarget(playbackController.getTime() + bufferController.getBufferLevel());
+                setSeekTarget(playbackController.getTime() + streamProcessor.getBufferLevel());
             }
         }
     }
@@ -247,7 +260,10 @@ function ScheduleController(config) {
     }
 
     function onInitRequested(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (!e.sender || e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         getInitRequest(currentRepresentationInfo.quality);
     }
 
@@ -261,12 +277,18 @@ function ScheduleController(config) {
         }
     }
 
+    function switchTrackAsked() {
+        switchTrack = true;
+    }
+
     function replaceRequest(request) {
         replaceRequestArray.push(request);
     }
 
     function onQualityChanged(e) {
-        if (type !== e.mediaType || streamProcessor.getStreamInfo().id !== e.streamInfo.id) return;
+        if (type !== e.mediaType || streamProcessor.getStreamInfo().id !== e.streamInfo.id) {
+            return;
+        }
 
         currentRepresentationInfo = streamProcessor.getRepresentationInfoForQuality(e.newQuality);
 
@@ -279,47 +301,108 @@ function ScheduleController(config) {
     }
 
     function completeQualityChange(trigger) {
-        const item = fragmentModel.getRequests({state: FragmentModel.FRAGMENT_MODEL_EXECUTED, time: playbackController.getTime(), threshold: 0})[0];
-        if (item && playbackController.getTime() >= item.startTime ) {
-            if (item.quality !== lastQualityIndex && trigger) {
-                eventBus.trigger(Events.QUALITY_CHANGE_RENDERED, {mediaType: type, oldQuality: lastQualityIndex, newQuality: item.quality});
+        if (playbackController && fragmentModel) {
+            const item = fragmentModel.getRequests({
+                state: FragmentModel.FRAGMENT_MODEL_EXECUTED,
+                time: playbackController.getTime(),
+                threshold: 0
+            })[0];
+            if (item && playbackController.getTime() >= item.startTime) {
+                if (item.quality !== lastQualityIndex && trigger) {
+                    eventBus.trigger(Events.QUALITY_CHANGE_RENDERED, {
+                        mediaType: type,
+                        oldQuality: lastQualityIndex,
+                        newQuality: item.quality
+                    });
+                }
+                lastQualityIndex = item.quality;
             }
-            lastQualityIndex = item.quality;
         }
     }
 
     function onDataUpdateCompleted(e) {
-        if (e.error || e.sender.getStreamProcessor() !== streamProcessor) return;
-        currentRepresentationInfo = adapter.convertDataToTrack(manifestModel.getValue(), e.currentRepresentation);
+        if (e.error || e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
+        currentRepresentationInfo = adapter.convertDataToRepresentationInfo(e.currentRepresentation);
     }
 
     function onStreamInitialized(e) {
-        if (e.error || streamProcessor.getStreamInfo().id !== e.streamInfo.id) return;
-        currentRepresentationInfo = streamProcessor.getCurrentRepresentationInfo();
-        if (!isDynamic || liveEdgeFinder.getLiveEdge() !== null) {
-            ready = true;
+        if (e.error || streamProcessor.getStreamInfo().id !== e.streamInfo.id) {
+            return;
         }
+
+        currentRepresentationInfo = streamProcessor.getCurrentRepresentationInfo();
+
+        if (initialRequest) {
+            if (playbackController.getIsDynamic()) {
+                timelineConverter.setTimeSyncCompleted(true);
+                setLiveEdgeSeekTarget();
+            } else {
+                seekTarget = playbackController.getStreamStartTime(false);
+                streamProcessor.getBufferController().setSeekStartTime(seekTarget);
+            }
+        }
+
         if (isStopped) {
             start();
         }
     }
 
+    function setLiveEdgeSeekTarget() {
+        const liveEdgeFinder = streamProcessor.getLiveEdgeFinder();
+        if (liveEdgeFinder) {
+            const liveEdge = liveEdgeFinder.getLiveEdge();
+            const dvrWindowSize = currentRepresentationInfo.mediaInfo.streamInfo.manifestInfo.DVRWindowSize / 2;
+            const startTime = liveEdge - playbackController.computeLiveDelay(currentRepresentationInfo.fragmentDuration, dvrWindowSize);
+            const request = adapter.getFragmentRequestForTime(streamProcessor, currentRepresentationInfo, startTime, {
+                ignoreIsFinished: true
+            });
+            seekTarget = playbackController.getLiveStartTime();
+            if (isNaN(seekTarget) || request.startTime > seekTarget) {
+                //special use case for multi period stream. If the startTime is out of the current period, send a seek command.
+                //in onPlaybackSeeking callback (StreamController), the detection of switch stream is done.
+                if (request.startTime > (currentRepresentationInfo.mediaInfo.streamInfo.start + currentRepresentationInfo.mediaInfo.streamInfo.duration)) {
+                    playbackController.seek(request.startTime);
+                }
+                playbackController.setLiveStartTime(request.startTime);
+                seekTarget = request.startTime;
+            }
+
+            const manifestUpdateInfo = dashMetrics.getCurrentManifestUpdate(metricsModel.getMetricsFor(Constants.STREAM));
+            metricsModel.updateManifestUpdateInfo(manifestUpdateInfo, {
+                currentTime: seekTarget,
+                presentationStartTime: liveEdge,
+                latency: liveEdge - seekTarget,
+                clientTimeOffset: timelineConverter.getClientTimeOffset()
+            });
+        }
+    }
+
     function onStreamCompleted(e) {
-        if (e.fragmentModel !== fragmentModel) return;
+        if (e.fragmentModel !== fragmentModel) {
+            return;
+        }
+
         stop();
         isFragmentProcessingInProgress = false;
         log('Stream is complete');
     }
 
     function onFragmentLoadingCompleted(e) {
-        if (e.sender !== fragmentModel) return;
+        if (e.sender !== fragmentModel) {
+            return;
+        }
 
         if (dashManifestModel.getIsTextTrack(type)) {
             isFragmentProcessingInProgress = false;
         }
 
-        if (e.error && e.serviceLocation && !isStopped) {
+        if (e.error && e.request.serviceLocation && !isStopped) {
             replaceRequest(e.request);
+            isFragmentProcessingInProgress = false;
+            startScheduleTimer(0);
         }
     }
 
@@ -328,30 +411,42 @@ function ScheduleController(config) {
     }
 
     function onBytesAppended(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         isFragmentProcessingInProgress = false;
         startScheduleTimer(0);
     }
 
     function onFragmentLoadingAbandoned(e) {
-        if (e.streamProcessor !== streamProcessor) return;
+        if (e.streamProcessor !== streamProcessor) {
+            return;
+        }
+        log('[ScheduleController][' + type + '] Request ' + e.request.url + ' has been aborted');
         replaceRequest(e.request);
         isFragmentProcessingInProgress = false;
         startScheduleTimer(0);
     }
 
     function onDataUpdateStarted(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         stop();
     }
 
     function onBufferCleared(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         // after the data has been removed from the buffer we should remove the requests from the list of
         // the executed requests for which playback time is inside the time interval that has been removed from the buffer
         fragmentModel.removeExecutedRequestsBeforeTime(e.to);
 
-        if (e.hasEnoughSpaceToAppend && !bufferController.getIsBufferingCompleted() && isStopped) {
+        if (e.hasEnoughSpaceToAppend && isStopped) {
             start();
         }
     }
@@ -364,8 +459,12 @@ function ScheduleController(config) {
     }
 
     function onQuotaExceeded(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         stop();
+        isFragmentProcessingInProgress = false;
     }
 
     function onURLResolutionFailed() {
@@ -374,12 +473,15 @@ function ScheduleController(config) {
     }
 
     function onTimedTextRequested(e) {
-        if (e.sender.getStreamProcessor() !== streamProcessor) return;
+        if (e.sender.getStreamProcessor() !== streamProcessor) {
+            return;
+        }
+
         getInitRequest(e.index);
     }
 
     function onPlaybackStarted() {
-        if (isStopped) {
+        if (isStopped || !scheduleWhilePaused) {
             start();
         }
     }
@@ -392,42 +494,21 @@ function ScheduleController(config) {
             start();
         }
 
-        const manifestUpdateInfo = dashMetrics.getCurrentManifestUpdate(metricsModel.getMetricsFor('stream'));
-        const latency = currentRepresentationInfo.DVRWindow ? currentRepresentationInfo.DVRWindow.end - playbackController.getTime() : NaN;
-        metricsModel.updateManifestUpdateInfo(manifestUpdateInfo, {latency: latency});
+        const manifestUpdateInfo = dashMetrics.getCurrentManifestUpdate(metricsModel.getMetricsFor(Constants.STREAM));
+        const latency = currentRepresentationInfo.DVRWindow && playbackController ? currentRepresentationInfo.DVRWindow.end - playbackController.getTime() : NaN;
+        metricsModel.updateManifestUpdateInfo(manifestUpdateInfo, {
+            latency: latency
+        });
+
+        //if, during the seek command, the scheduleController is waiting : stop waiting, request chunk as soon as possible
+        if (!isFragmentProcessingInProgress) {
+            startScheduleTimer(0);
+        }
     }
 
     function onPlaybackRateChanged(e) {
         if (playListTraceMetrics) {
             playListTraceMetrics.playbackspeed = e.playbackRate.toString();
-        }
-    }
-
-    function onLiveEdgeSearchCompleted (e) {
-        if (e.error) return;
-
-        const dvrWindowSize = currentRepresentationInfo.mediaInfo.streamInfo.manifestInfo.DVRWindowSize / 2;
-        const startTime = e.liveEdge - playbackController.computeLiveDelay(currentRepresentationInfo.fragmentDuration, dvrWindowSize);
-        const manifestUpdateInfo = dashMetrics.getCurrentManifestUpdate(metricsModel.getMetricsFor('stream'));
-        const currentLiveStart = playbackController.getLiveStartTime();
-        const request = adapter.getFragmentRequestForTime(streamProcessor, currentRepresentationInfo, startTime, {ignoreIsFinished: true});
-
-        seekTarget = currentLiveStart;
-        if (isNaN(currentLiveStart) || request.startTime > currentLiveStart) {
-            playbackController.setLiveStartTime(request.startTime);
-            seekTarget = request.startTime;
-        }
-
-        metricsModel.updateManifestUpdateInfo(manifestUpdateInfo, {
-            currentTime: seekTarget,
-            presentationStartTime: e.liveEdge,
-            latency: e.liveEdge - seekTarget,
-            clientTimeOffset: timelineConverter.getClientTimeOffset()
-        });
-
-        ready = true;
-        if (isStopped) {
-            start();
         }
     }
 
@@ -439,10 +520,6 @@ function ScheduleController(config) {
         seekTarget = value;
     }
 
-    function getFragmentModel() {
-        return fragmentModel;
-    }
-
     function setTimeToLoadDelay(value) {
         timeToLoadDelay = value;
     }
@@ -451,12 +528,12 @@ function ScheduleController(config) {
         return timeToLoadDelay;
     }
 
-    function getStreamProcessor() {
-        return streamProcessor;
-    }
-
     function getBufferTarget() {
         return bufferLevelRule.getBufferTarget(streamProcessor, type, streamController.isVideoTrackPresent());
+    }
+
+    function getType() {
+        return type;
     }
 
     function setPlayList(playList) {
@@ -490,8 +567,24 @@ function ScheduleController(config) {
         }
     }
 
+    function resetInitialSettings() {
+        isFragmentProcessingInProgress = false;
+        timeToLoadDelay = 0;
+        seekTarget = NaN;
+        playListMetrics = null;
+        playListTraceMetrics = null;
+        playListTraceMetricsClosed = true;
+        initialRequest = true;
+        lastInitQuality = NaN;
+        lastQualityIndex = NaN;
+        topQualityIndex = {};
+        replaceRequestArray = [];
+        isStopped = true;
+        switchTrack = true;
+    }
+
     function reset() {
-        eventBus.off(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
+        //eventBus.off(Events.LIVE_EDGE_SEARCH_COMPLETED, onLiveEdgeSearchCompleted, this);
         eventBus.off(Events.DATA_UPDATE_STARTED, onDataUpdateStarted, this);
         eventBus.off(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
         eventBus.off(Events.BUFFER_LEVEL_STATE_CHANGED, onBufferLevelStateChanged, this);
@@ -515,22 +608,19 @@ function ScheduleController(config) {
 
         stop();
         completeQualityChange(false);
-        isFragmentProcessingInProgress = false;
-        timeToLoadDelay = 0;
-        seekTarget = NaN;
-        playbackController = null;
-        playListMetrics = null;
+        resetInitialSettings();
     }
 
     instance = {
         initialize: initialize,
-        getStreamProcessor: getStreamProcessor,
+        getType: getType,
         getSeekTarget: getSeekTarget,
         setSeekTarget: setSeekTarget,
-        getFragmentModel: getFragmentModel,
         setTimeToLoadDelay: setTimeToLoadDelay,
         getTimeToLoadDelay: getTimeToLoadDelay,
         replaceRequest: replaceRequest,
+        switchTrackAsked: switchTrackAsked,
+        isStarted: isStarted,
         start: start,
         stop: stop,
         reset: reset,
