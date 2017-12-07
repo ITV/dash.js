@@ -28,20 +28,19 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import MediaPlayerModel from '../../models/MediaPlayerModel';
+import Constants from '../../constants/Constants';
 import FactoryMaker from '../../../core/FactoryMaker';
 
 function BufferLevelRule(config) {
 
-    const context = this.context;
+    config = config || {};
     const dashMetrics = config.dashMetrics;
     const metricsModel = config.metricsModel;
-    const textSourceBuffer = config.textSourceBuffer;
-
-    let mediaPlayerModel;
+    const mediaPlayerModel = config.mediaPlayerModel;
+    const textController = config.textController;
+    const abrController = config.abrController;
 
     function setup() {
-        mediaPlayerModel = MediaPlayerModel(context).getInstance();
     }
 
     function execute(streamProcessor, type, videoTrackPresent) {
@@ -52,14 +51,18 @@ function BufferLevelRule(config) {
     function getBufferTarget(streamProcessor, type, videoTrackPresent) {
         let bufferTarget = NaN;
         const representationInfo = streamProcessor.getCurrentRepresentationInfo();
-        if (type === 'fragmentedText') {
-            bufferTarget = textSourceBuffer.getAllTracksAreDisabled() ? 0 : representationInfo.fragmentDuration;
-        } else if (type === 'audio' && videoTrackPresent) {
-            const videoBufferLevel = dashMetrics.getCurrentBufferLevel(metricsModel.getReadOnlyMetricsFor('video'));
-            bufferTarget = Math.floor(Math.max(videoBufferLevel, representationInfo.fragmentDuration));
+        if (type === Constants.FRAGMENTED_TEXT) {
+            bufferTarget = textController.getAllTracksAreDisabled() ? 0 : representationInfo.fragmentDuration;
+        } else if (type === Constants.AUDIO && videoTrackPresent) {
+            const videoBufferLevel = dashMetrics.getCurrentBufferLevel(metricsModel.getReadOnlyMetricsFor(Constants.VIDEO));
+            if (isNaN(representationInfo.fragmentDuration)) {
+                bufferTarget = videoBufferLevel;
+            } else {
+                bufferTarget = Math.max(videoBufferLevel, representationInfo.fragmentDuration);
+            }
+            // console.log('videoBufferLevel  - ' + videoBufferLevel + ' target : ' + bufferTarget);
         } else {
             const streamInfo = representationInfo.mediaInfo.streamInfo;
-            const abrController = streamProcessor.getABRController();
             if (abrController.isPlayingAtTopQuality(streamInfo)) {
                 const isLongFormContent = streamInfo.manifestInfo.duration >= mediaPlayerModel.getLongFormContentDurationThreshold();
                 bufferTarget = isLongFormContent ? mediaPlayerModel.getBufferTimeAtTopQualityLongForm() : mediaPlayerModel.getBufferTimeAtTopQuality();

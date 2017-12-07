@@ -28,17 +28,18 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
+import Constants from './constants/Constants';
 import XlinkController from './controllers/XlinkController';
 import XHRLoader from './XHRLoader';
 import URLUtils from './utils/URLUtils';
-import ErrorHandler from './utils/ErrorHandler';
 import TextRequest from './vo/TextRequest';
-import Error from './vo/Error';
+import DashJSError from './vo/DashJSError';
 import {HTTPRequest} from './vo/metrics/HTTPRequest';
 import EventBus from '../core/EventBus';
 import Events from '../core/events/Events';
 import FactoryMaker from '../core/FactoryMaker';
 import DashParser from '../dash/parser/DashParser';
+import Debug from '../core/Debug';
 
 const MANIFEST_LOADER_ERROR_PARSING_FAILURE = 1;
 const MANIFEST_LOADER_ERROR_LOADING_FAILURE = 2;
@@ -46,29 +47,34 @@ const MANIFEST_LOADER_MESSAGE_PARSING_FAILURE = 'parsing failed';
 
 function ManifestLoader(config) {
 
+    config = config || {};
     const context = this.context;
     const eventBus = EventBus(context).getInstance();
     const urlUtils = URLUtils(context).getInstance();
-    const errorHandler = ErrorHandler(context).getInstance();
+    const debug = Debug(context).getInstance();
+    const log = debug.log;
 
     let instance,
         xhrLoader,
         xlinkController,
         parser;
     let mssHandler = config.mssHandler;
+    let errHandler = config.errHandler;
 
     function setup() {
         eventBus.on(Events.XLINK_READY, onXlinkReady, instance);
 
         xhrLoader = XHRLoader(context).create({
-            errHandler: config.errHandler,
+            errHandler: errHandler,
             metricsModel: config.metricsModel,
+            mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier
         });
 
         xlinkController = XlinkController(context).create({
-            errHandler: config.errHandler,
+            errHandler: errHandler,
             metricsModel: config.metricsModel,
+            mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier
         });
 
@@ -84,7 +90,7 @@ function ManifestLoader(config) {
     }
 
     function createParser(data) {
-        var parser = null;
+        let parser = null;
         // Analyze manifest content to detect protocol and select appropriate parser
         if (data.indexOf('SmoothStreamingMedia') > -1) {
             //do some business to transform it into a Dash Manifest
@@ -92,11 +98,13 @@ function ManifestLoader(config) {
                 parser = mssHandler.createMssParser();
                 mssHandler.registerEvents();
             }else {
-                errorHandler.manifestError('manifest type unsupported', 'createParser');
+                errHandler.manifestError('manifest type unsupported', 'createParser');
             }
             return parser;
         } else if (data.indexOf('MPD') > -1) {
-            return DashParser(context).create();
+            return DashParser(context).create({
+                errorHandler: errHandler
+            });
         } else {
             return parser;
         }
@@ -108,8 +116,8 @@ function ManifestLoader(config) {
         xhrLoader.load({
             request: request,
             success: function (data, textStatus, xhr) {
-                var actualUrl;
-                var baseUri;
+                let actualUrl,
+                    baseUri;
 
                 // Handle redirects for the MPD - as per RFC3986 Section 5.1.3
                 // also handily resolves relative MPD URLs to absolute
@@ -118,7 +126,7 @@ function ManifestLoader(config) {
                     actualUrl = xhr.responseURL;
                 } else {
                     // usually this case will be caught and resolved by
-                    // xhr.responseURL above but it is not available for IE11
+                    // xhr.responseURL above but it is not available for IE11 and Edge/12 and Edge/13
                     // baseUri must be absolute for BaseURL resolution later
                     if (urlUtils.isRelative(url)) {
                         url = urlUtils.resolve(url, window.location.href);
@@ -136,7 +144,7 @@ function ManifestLoader(config) {
                     eventBus.trigger(
                         Events.INTERNAL_MANIFEST_LOADED, {
                             manifest: null,
-                            error: new Error(
+                            error: new DashJSError(
                                 MANIFEST_LOADER_ERROR_PARSING_FAILURE,
                                 `Failed detecting manifest type: ${url}`
                             )
@@ -145,7 +153,11 @@ function ManifestLoader(config) {
                     return;
                 }
 
-                const manifest = parser.parse(data, xlinkController);
+                // init xlinkcontroller with matchers and iron object from created parser
+                xlinkController.setMatchers(parser.getMatchers());
+                xlinkController.setIron(parser.getIron());
+
+                const manifest = parser.parse(data);
 
                 if (manifest) {
                     manifest.url = actualUrl || url;
@@ -155,6 +167,13 @@ function ManifestLoader(config) {
                         manifest.originalUrl = manifest.url;
                     }
 
+                    // In the following, we only use the first Location entry even if many are available
+                    // Compare with ManifestUpdater/DashManifestModel
+                    if (manifest.hasOwnProperty(Constants.LOCATION)) {
+                        baseUri = urlUtils.parseBaseUrl(manifest.Location_asArray[0]);
+                        log('BaseURI set by Location to: ' + baseUri);
+                    }
+
                     manifest.baseUri = baseUri;
                     manifest.loadedTime = new Date();
                     xlinkController.resolveManifestOnLoad(manifest);
@@ -162,7 +181,7 @@ function ManifestLoader(config) {
                     eventBus.trigger(
                         Events.INTERNAL_MANIFEST_LOADED, {
                             manifest: null,
-                            error: new Error(
+                            error: new DashJSError(
                                 MANIFEST_LOADER_ERROR_PARSING_FAILURE,
                                 MANIFEST_LOADER_MESSAGE_PARSING_FAILURE
                             )
@@ -174,7 +193,7 @@ function ManifestLoader(config) {
                 eventBus.trigger(
                     Events.INTERNAL_MANIFEST_LOADED, {
                         manifest: null,
-                        error: new Error(
+                        error: new DashJSError(
                             MANIFEST_LOADER_ERROR_LOADING_FAILURE,
                             `Failed loading manifest: ${url}, ${errorText}`
                         )
@@ -217,4 +236,5 @@ ManifestLoader.__dashjs_factory_name = 'ManifestLoader';
 const factory = FactoryMaker.getClassFactory(ManifestLoader);
 factory.MANIFEST_LOADER_ERROR_PARSING_FAILURE = MANIFEST_LOADER_ERROR_PARSING_FAILURE;
 factory.MANIFEST_LOADER_ERROR_LOADING_FAILURE = MANIFEST_LOADER_ERROR_LOADING_FAILURE;
+FactoryMaker.updateClassFactory(ManifestLoader.__dashjs_factory_name, factory);
 export default factory;

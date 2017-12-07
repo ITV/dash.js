@@ -43,22 +43,21 @@ import KeyError from '../vo/KeyError';
 import KeyMessage from '../vo/KeyMessage';
 import KeySystemConfiguration from '../vo/KeySystemConfiguration';
 import KeySystemAccess from '../vo/KeySystemAccess';
-import Events from '../../../core/events/Events';
-import ErrorHandler from '../../utils/ErrorHandler';
-import FactoryMaker from '../../../core/FactoryMaker';
 
 function ProtectionModel_01b(config) {
 
-    let context = this.context;
-    let eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
-    let log = config.log;
-    let api = config.api;
+    config = config || {};
+    const context = this.context;
+    const eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
+    const events = config.events;
+    const log = config.log;
+    const api = config.api;
+    const errHandler = config.errHandler;
 
     let instance,
         videoElement,
         keySystem,
         protectionKeyController,
-        errHandler,
 
         // With this version of the EME APIs, sessionIDs are not assigned to
         // sessions until the first key message is received.  We are assuming
@@ -89,7 +88,6 @@ function ProtectionModel_01b(config) {
         pendingSessions = [];
         sessions = [];
         protectionKeyController = ProtectionKeyController(context).getInstance();
-        errHandler = ErrorHandler(context).getInstance();
         eventHandler = createEventHandler();
     }
 
@@ -97,10 +95,10 @@ function ProtectionModel_01b(config) {
         if (videoElement) {
             removeEventListeners();
         }
-        for (var i = 0; i < sessions.length; i++) {
+        for (let i = 0; i < sessions.length; i++) {
             closeKeySession(sessions[i]);
         }
-        eventBus.trigger(Events.TEARDOWN_COMPLETE);
+        eventBus.trigger(events.TEARDOWN_COMPLETE);
     }
 
     function getKeySystem() {
@@ -108,7 +106,7 @@ function ProtectionModel_01b(config) {
     }
 
     function getAllInitData() {
-        var retVal = [];
+        const retVal = [];
         for (let i = 0; i < pendingSessions.length; i++) {
             retVal.push(pendingSessions[i].initData);
         }
@@ -119,29 +117,29 @@ function ProtectionModel_01b(config) {
     }
 
     function requestKeySystemAccess(ksConfigurations) {
-        var ve = videoElement;
+        let ve = videoElement;
         if (!ve) { // Must have a video element to do this capability tests
             ve = document.createElement('video');
         }
 
         // Try key systems in order, first one with supported key system configuration
         // is used
-        var found = false;
-        for (var ksIdx = 0; ksIdx < ksConfigurations.length; ksIdx++) {
-            var systemString = ksConfigurations[ksIdx].ks.systemString;
-            var configs = ksConfigurations[ksIdx].configs;
-            var supportedAudio = null;
-            var supportedVideo = null;
+        let found = false;
+        for (let ksIdx = 0; ksIdx < ksConfigurations.length; ksIdx++) {
+            const systemString = ksConfigurations[ksIdx].ks.systemString;
+            const configs = ksConfigurations[ksIdx].configs;
+            let supportedAudio = null;
+            let supportedVideo = null;
 
             // Try key system configs in order, first one with supported audio/video
             // is used
-            for (var configIdx = 0; configIdx < configs.length; configIdx++) {
-                //var audios = configs[configIdx].audioCapabilities;
-                var videos = configs[configIdx].videoCapabilities;
+            for (let configIdx = 0; configIdx < configs.length; configIdx++) {
+                //let audios = configs[configIdx].audioCapabilities;
+                const videos = configs[configIdx].videoCapabilities;
                 // Look for supported video container/codecs
                 if (videos && videos.length !== 0) {
                     supportedVideo = []; // Indicates that we have a requested video config
-                    for (var videoIdx = 0; videoIdx < videos.length; videoIdx++) {
+                    for (let videoIdx = 0; videoIdx < videos.length; videoIdx++) {
                         if (ve.canPlayType(videos[videoIdx].contentType, systemString) !== '') {
                             supportedVideo.push(videos[videoIdx]);
                         }
@@ -158,20 +156,20 @@ function ProtectionModel_01b(config) {
 
                 // This configuration is supported
                 found = true;
-                var ksConfig = new KeySystemConfiguration(supportedAudio, supportedVideo);
-                var ks = protectionKeyController.getKeySystemBySystemString(systemString);
-                eventBus.trigger(Events.KEY_SYSTEM_ACCESS_COMPLETE, { data: new KeySystemAccess(ks, ksConfig) });
+                const ksConfig = new KeySystemConfiguration(supportedAudio, supportedVideo);
+                const ks = protectionKeyController.getKeySystemBySystemString(systemString);
+                eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, { data: new KeySystemAccess(ks, ksConfig) });
                 break;
             }
         }
         if (!found) {
-            eventBus.trigger(Events.KEY_SYSTEM_ACCESS_COMPLETE, {error: 'Key system access denied! -- No valid audio/video content configurations detected!'});
+            eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, {error: 'Key system access denied! -- No valid audio/video content configurations detected!'});
         }
     }
 
     function selectKeySystem(keySystemAccess) {
         keySystem = keySystemAccess.keySystem;
-        eventBus.trigger(Events.INTERNAL_KEY_SYSTEM_SELECTED);
+        eventBus.trigger(events.INTERNAL_KEY_SYSTEM_SELECTED);
     }
 
     function setMediaElement(mediaElement) {
@@ -192,20 +190,18 @@ function ProtectionModel_01b(config) {
             videoElement.addEventListener(api.needkey, eventHandler);
             videoElement.addEventListener(api.keymessage, eventHandler);
             videoElement.addEventListener(api.keyadded, eventHandler);
-            eventBus.trigger(Events.VIDEO_ELEMENT_SELECTED);
+            eventBus.trigger(events.VIDEO_ELEMENT_SELECTED);
         }
     }
 
-    function createKeySession(initData /*, keySystemType */) {
-
+    function createKeySession(initData /*, protData, keySystemType */) {
         if (!keySystem) {
             throw new Error('Can not create sessions until you have selected a key system');
         }
 
         // Determine if creating a new session is allowed
         if (moreSessionsAllowed || sessions.length === 0) {
-
-            var newSession = { // Implements SessionToken
+            const newSession = { // Implements SessionToken
                 sessionID: null,
                 initData: initData,
                 getSessionID: function () {
@@ -234,14 +230,14 @@ function ProtectionModel_01b(config) {
     }
 
     function updateKeySession(sessionToken, message) {
-        var sessionID = sessionToken.sessionID;
+        const sessionID = sessionToken.sessionID;
         if (!protectionKeyController.isClearKey(keySystem)) {
             // Send our request to the CDM
             videoElement[api.addKey](keySystem.systemString,
-                new Uint8Array(message), sessionToken.initData, sessionID);
+                new Uint8Array(message), new Uint8Array(sessionToken.initData), sessionID);
         } else {
             // For clearkey, message is a ClearKeyKeySet
-            for (var i = 0; i < message.keyPairs.length; i++) {
+            for (let i = 0; i < message.keyPairs.length; i++) {
                 videoElement[api.addKey](keySystem.systemString,
                     message.keyPairs[i].key, message.keyPairs[i].keyID, sessionID);
             }
@@ -260,12 +256,11 @@ function ProtectionModel_01b(config) {
     function createEventHandler() {
         return {
             handleEvent: function (event) {
-                var sessionToken = null;
+                let sessionToken = null;
                 switch (event.type) {
-
                     case api.needkey:
-                        var initData = ArrayBuffer.isView(event.initData) ? event.initData.buffer : event.initData;
-                        eventBus.trigger(Events.NEED_KEY, {key: new NeedKey(initData, 'cenc')});
+                        let initData = ArrayBuffer.isView(event.initData) ? event.initData.buffer : event.initData;
+                        eventBus.trigger(events.NEED_KEY, {key: new NeedKey(initData, 'cenc')});
                         break;
 
                     case api.keyerror:
@@ -275,7 +270,7 @@ function ProtectionModel_01b(config) {
                         }
 
                         if (sessionToken) {
-                            var msg = '';
+                            let msg = '';
                             switch (event.errorCode.code) {
                                 case 1:
                                     msg += 'MEDIA_KEYERR_UNKNOWN - An unspecified error occurred. This value is used for errors that don\'t match any of the other codes.';
@@ -298,7 +293,7 @@ function ProtectionModel_01b(config) {
                             }
                             msg += '  System Code = ' + event.systemCode;
                             // TODO: Build error string based on key error
-                            eventBus.trigger(Events.KEY_ERROR, {data: new KeyError(sessionToken, msg)});
+                            eventBus.trigger(events.KEY_ERROR, {data: new KeyError(sessionToken, msg)});
                         } else {
                             log('No session token found for key error');
                         }
@@ -312,21 +307,19 @@ function ProtectionModel_01b(config) {
 
                         if (sessionToken) {
                             log('DRM: Key added.');
-                            eventBus.trigger(Events.KEY_ADDED, {data: sessionToken});//TODO not sure anything is using sessionToken? why there?
+                            eventBus.trigger(events.KEY_ADDED, {data: sessionToken});//TODO not sure anything is using sessionToken? why there?
                         } else {
                             log('No session token found for key added');
                         }
                         break;
 
                     case api.keymessage:
-
                         // If this CDM does not support session IDs, we will be limited
                         // to a single session
                         moreSessionsAllowed = (event.sessionId !== null) && (event.sessionId !== undefined);
 
                         // SessionIDs supported
                         if (moreSessionsAllowed) {
-
                             // Attempt to find an uninitialized token with this sessionID
                             sessionToken = findSessionByID(sessions, event.sessionId);
                             if (!sessionToken && pendingSessions.length > 0) {
@@ -338,7 +331,6 @@ function ProtectionModel_01b(config) {
                                 sessionToken.sessionID = event.sessionId;
                             }
                         } else if (pendingSessions.length > 0) { // SessionIDs not supported
-
                             sessionToken = pendingSessions.shift();
                             sessions.push(sessionToken);
 
@@ -348,13 +340,13 @@ function ProtectionModel_01b(config) {
                         }
 
                         if (sessionToken) {
-                            var message = ArrayBuffer.isView(event.message) ? event.message.buffer : event.message;
+                            let message = ArrayBuffer.isView(event.message) ? event.message.buffer : event.message;
 
                             // For ClearKey, the spec mandates that you pass this message to the
                             // addKey method, so we always save it to the token since there is no
                             // way to tell which key system is in use
                             sessionToken.keyMessage = message;
-                            eventBus.trigger(Events.INTERNAL_KEY_MESSAGE, {data: new KeyMessage(sessionToken, message, event.defaultURL)});
+                            eventBus.trigger(events.INTERNAL_KEY_MESSAGE, {data: new KeyMessage(sessionToken, message, event.defaultURL)});
 
                         } else {
                             log('No session token found for key message');
@@ -375,12 +367,11 @@ function ProtectionModel_01b(config) {
      * @returns {*} the session token with the given sessionID
      */
     function findSessionByID(sessionArray, sessionID) {
-
         if (!sessionID || !sessionArray) {
             return null;
         } else {
-            var len = sessionArray.length;
-            for (var i = 0; i < len; i++) {
+            const len = sessionArray.length;
+            for (let i = 0; i < len; i++) {
                 if (sessionArray[i].sessionID == sessionID) {
                     return sessionArray[i];
                 }
@@ -417,4 +408,4 @@ function ProtectionModel_01b(config) {
 }
 
 ProtectionModel_01b.__dashjs_factory_name = 'ProtectionModel_01b';
-export default FactoryMaker.getClassFactory(ProtectionModel_01b);
+export default dashjs.FactoryMaker.getClassFactory(ProtectionModel_01b); /* jshint ignore:line */

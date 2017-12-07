@@ -28,7 +28,7 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-
+import DashConstants from '../constants/DashConstants';
 import FactoryMaker from '../../core/FactoryMaker';
 import TimelineSegmentsGetter from './TimelineSegmentsGetter';
 import TemplateSegmentsGetter from './TemplateSegmentsGetter';
@@ -36,7 +36,7 @@ import ListSegmentsGetter from './ListSegmentsGetter';
 
 function SegmentsGetter(config, isDynamic) {
 
-    let context = this.context;
+    const context = this.context;
 
     let instance,
         timelineSegmentsGetter,
@@ -49,19 +49,21 @@ function SegmentsGetter(config, isDynamic) {
         listSegmentsGetter = ListSegmentsGetter(context).create(config, isDynamic);
     }
 
+    // availabilityUpperLimit parameter is not used directly by any dash.js function, but it is needed as a helper
+    // for other developments that extend dash.js, and provide their own transport layers (ex: P2P transport)
     function getSegments(representation, requestedTime, index, onSegmentListUpdatedCallback, availabilityUpperLimit) {
-        var segments;
-        var type = representation.segmentInfoType;
+        let segments;
+        const type = representation.segmentInfoType;
 
         // Already figure out the segments.
-        if (type === 'SegmentBase' || type === 'BaseURL' || !isSegmentListUpdateRequired(representation, index)) {
+        if (type === DashConstants.SEGMENT_BASE || type === DashConstants.BASE_URL || !isSegmentListUpdateRequired(representation, index)) {
             segments = representation.segments;
         } else {
-            if (type === 'SegmentTimeline') {
+            if (type === DashConstants.SEGMENT_TIMELINE) {
                 segments = timelineSegmentsGetter.getSegments(representation, requestedTime, index, availabilityUpperLimit);
-            } else if (type === 'SegmentTemplate') {
+            } else if (type === DashConstants.SEGMENT_TEMPLATE) {
                 segments = templateSegmentsGetter.getSegments(representation, requestedTime, index, availabilityUpperLimit);
-            } else if (type === 'SegmentList') {
+            } else if (type === DashConstants.SEGMENT_LIST) {
                 segments = listSegmentsGetter.getSegments(representation, requestedTime, index, availabilityUpperLimit);
             }
 
@@ -69,15 +71,13 @@ function SegmentsGetter(config, isDynamic) {
                 onSegmentListUpdatedCallback(representation, segments);
             }
         }
-
-        return segments;
     }
 
     function isSegmentListUpdateRequired(representation, index) {
-        var segments = representation.segments;
-        var updateRequired = false;
+        const segments = representation.segments;
+        let updateRequired = false;
 
-        var upperIdx,
+        let upperIdx,
             lowerIdx;
 
         if (!segments || segments.length === 0) {

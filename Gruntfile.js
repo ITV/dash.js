@@ -17,7 +17,7 @@ module.exports = function (grunt) {
         },
         jshint: {
             src: {
-                src: ['src/**/*.js', 'Gruntfile.js'],
+                src: ['src/**/*.js', 'test/unit/mocks/*.js', 'test/unit/*.js', 'Gruntfile.js'],
                 options: {
                     jshintrc: '.jshintrc'
                 }
@@ -86,11 +86,33 @@ module.exports = function (grunt) {
                 files: {
                     'build/temp/dash.all.min.js': 'build/temp/dash.all.debug.js'
                 }
+            }
+        },
+        browserSync: {
+            bsFiles: {
+                src: ['dist/*.js', 'samples/**/*', 'contrib/**/*', 'externals/**/*.js']
             },
-
+            options: {
+                watchTask: true,
+                host: 'localhost',
+                server: {
+                    baseDir: './',
+                    directory: true
+                },
+                startPath: '/samples/index.html',
+                plugins: [
+                    {
+                        module: 'bs-html-injector',
+                        options: {
+                            files: 'samples/**/*.html'
+                        }
+                    }
+                ]
+            }
         },
         copy: {
             dist: {
+              files: [{
                 expand: true,
                 cwd: 'build/temp/',
                 src: [
@@ -103,39 +125,63 @@ module.exports = function (grunt) {
                     'dash.mediaplayer.debug.js', 'dash.mediaplayer.debug.js.map',
                     'dash.protection.debug.js', 'dash.protection.debug.js.map',
                     'dash.reporting.debug.js', 'dash.reporting.debug.js.map',
-                    'dash.mss.debug.js', 'dash.mss.debug.js.map',
+                    'dash.mss.debug.js', 'dash.mss.debug.js.map'
                 ],
                 dest: 'dist/',
                 filter: 'isFile'
-            }
+            }, {
+                expand: true,
+                cwd: '.',
+                src: 'index.d.ts',
+                dest: 'dist/',
+                rename: function (dest) {
+                    return dest + 'dash.d.ts';
+                }
+            }, {
+                expand: true,
+                cwd: '.',
+                src: 'index.d.ts',
+                dest: 'build/typings/'
+            }]
+          }
         },
         exorcise: {
             mediaplayer: {
-                options: {},
+                options: {
+                    base: './src'
+                },
                 files: {
-                    'build/temp/dash.mediaplayer.debug.js.map': ['build/temp/dash.mediaplayer.debug.js'],
+                    'build/temp/dash.mediaplayer.debug.js.map': ['build/temp/dash.mediaplayer.debug.js']
                 }
             },
             protection: {
-                options: {},
+                options: {
+                    base: './src'
+                },
                 files: {
                     'build/temp/dash.protection.debug.js.map': ['build/temp/dash.protection.debug.js']
                 }
             },
             all: {
-                options: {},
+                options: {
+                    base: './src'
+                },
                 files: {
                     'build/temp/dash.all.debug.js.map': ['build/temp/dash.all.debug.js']
                 }
             },
             reporting: {
-                options: {},
+                options: {
+                    base: './src'
+                },
                 files: {
                     'build/temp/dash.reporting.debug.js.map': ['build/temp/dash.reporting.debug.js']
                 }
             },
             mss: {
-                options: {},
+                options: {
+                    base: './src'
+                },
                 files: {
                     'build/temp/dash.mss.debug.js.map': ['build/temp/dash.mss.debug.js']
                 }
@@ -144,13 +190,14 @@ module.exports = function (grunt) {
 
         babel: {
             options: {
-                sourceMap: true
+                sourceMap: true,
+                compact: true
             },
             es5: {
                 files: [{
                     expand: true,
-                    src: ['index.js', 'src/**/*.js', 'externals/**/*.js'],
-                    dest: 'build/es5/',
+                    src: ['index.js', 'index_mediaplayerOnly.js', 'src/**/*.js', 'externals/**/*.js'],
+                    dest: 'build/es5/'
                 }]
             }
         },
@@ -158,17 +205,16 @@ module.exports = function (grunt) {
         browserify: {
             mediaplayer: {
                 files: {
-                    'build/temp/dash.mediaplayer.debug.js': ['src/streaming/MediaPlayer.js']
+                    'build/temp/dash.mediaplayer.debug.js': ['index_mediaplayerOnly.js']
                 },
                 options: {
                     browserifyOptions: {
-                        debug: true,
-                        standalone: 'dashjs.MediaPlayer'
+                        debug: true
                     },
                     plugin: [
                         'browserify-derequire', 'bundle-collapser/plugin'
                     ],
-                    transform: ['babelify']
+                    transform: [['babelify', {compact: false}]]
                 }
             },
             protection: {
@@ -183,7 +229,7 @@ module.exports = function (grunt) {
                     plugin: [
                         'browserify-derequire', 'bundle-collapser/plugin'
                     ],
-                    transform: ['babelify']
+                    transform: [['babelify', {compact: false}]]
                 }
             },
             reporting: {
@@ -198,22 +244,7 @@ module.exports = function (grunt) {
                     plugin: [
                         'browserify-derequire', 'bundle-collapser/plugin'
                     ],
-                    transform: ['babelify']
-                }
-            },
-            mss: {
-                files: {
-                    'build/temp/dash.mss.debug.js': ['src/mss/MssHandler.js']
-                },
-                options: {
-                    browserifyOptions: {
-                        debug: true,
-                        standalone: 'dashjs.MssHandler'
-                    },
-                    plugin: [
-                        'browserify-derequire', 'bundle-collapser/plugin'
-                    ],
-                    transform: ['babelify']
+                    transform: [['babelify', {compact: false}]]
                 }
             },
             all: {
@@ -227,13 +258,45 @@ module.exports = function (grunt) {
                     plugin: [
                         'browserify-derequire', 'bundle-collapser/plugin'
                     ],
-                    transform: ['babelify']
+                    transform: [['babelify', {compact: false}]]
+                }
+            },
+            mss: {
+                files: {
+                    'build/temp/dash.mss.debug.js': ['src/mss/index.js']
+                },
+                options: {
+                    browserifyOptions: {
+                        debug: true
+                    },
+                    plugin: [
+                        'browserify-derequire', 'bundle-collapser/plugin'
+                    ],
+                    transform: [['babelify', {compact: false}]]
                 }
             },
 
             watch: {
                 files: {
-                    'build/temp/dash.all.debug.js': ['index.js']
+                    'build/temp/dash.all.debug.js': ['index.js'],
+                    'build/temp/dash.mss.debug.js': ['src/mss/index.js']
+                },
+                options: {
+                    watch: true,
+                    keepAlive: true,
+                    browserifyOptions: {
+                        debug: true
+                    },
+                    plugin: [
+                        'browserify-derequire'
+                    ],
+                    transform: [['babelify', {compact: false}]]
+                }
+            },
+            watch_dev: {
+                files: {
+                    'dist/dash.all.debug.js': ['index.js'],
+                    'dist/dash.mss.debug.js': ['src/mss/index.js']
                 },
                 options: {
                     watch: true,
@@ -244,7 +307,7 @@ module.exports = function (grunt) {
                     plugin: [
                         ['browserify-derequire']
                     ],
-                    transform: ['babelify']
+                    transform: [['babelify', {compact: false}]]
                 }
             }
         },
@@ -258,18 +321,19 @@ module.exports = function (grunt) {
         },
         mocha_istanbul: {
             test: {
-                src: './test',
+                src: './test/unit',
                 options: {
                     mask: '*.js',
                     coverageFolder: './reports',
                     mochaOptions: ['--compilers', 'js:babel/register'],
-                    print: 'summary',
+                    print: 'both',
+                    reportFormats: ['lcov'],
                     root: './src'
                 }
             }
         },
         jscs: {
-            src: ['./src/**/*.js', 'Gruntfile.js'],
+            src: ['./src/**/*.js', 'test/unit/mocks/*.js', 'test/unit/*.js', 'Gruntfile.js'],
             options: {
                 config: '.jscsrc'
             }
@@ -277,6 +341,36 @@ module.exports = function (grunt) {
         githooks: {
             all: {
                 'pre-commit': 'lint'
+            }
+        },
+        ftp_push: {
+            deployment: {
+                options: {
+                    host: grunt.option('ftp-host'),
+                    dest: '/',
+                    username: grunt.option('ftp-user'),
+                    password: grunt.option('ftp-pass'),
+                    hideCredentials: true,
+                    // disabling incrementalUpdates because this option is not working fine
+                    incrementalUpdates: false,
+                    debug: false,
+                    port: 21
+                },
+                files: [
+                    {
+                        expand: true,
+                        cwd: '.',
+                        src: [
+                            'contrib/**',
+                            'dist/**',
+                            'test/functional/test.html',
+                            'test/functional/testsCommon.js',
+                            'test/functional/config/**',
+                            'test/functional/tests/**',
+                            'samples/dash-if-reference-player/**'
+                        ]
+                    }
+                ]
             }
         }
     });
@@ -287,8 +381,11 @@ module.exports = function (grunt) {
     grunt.registerTask('minimize', ['exorcise', 'githash', 'uglify']);
     grunt.registerTask('test', ['mocha_istanbul:test']);
     grunt.registerTask('watch', ['browserify:watch']);
+    grunt.registerTask('watch-dev', ['browserify:watch_dev']);
     grunt.registerTask('release', ['default', 'jsdoc']);
     grunt.registerTask('debug', ['clean', 'browserify:all', 'exorcise:all', 'copy:dist']);
     grunt.registerTask('lint', ['jshint', 'jscs']);
     grunt.registerTask('prepublish', ['githooks', 'dist']);
+    grunt.registerTask('dev', ['browserSync', 'watch-dev']);
+    grunt.registerTask('deploy', ['ftp_push']);
 };
