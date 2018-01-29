@@ -129,7 +129,7 @@ function XHRLoader(cfg) {
                     errHandler.downloadError(
                         downloadErrorToRequestTypeMap[request.type],
                         request.url,
-                        request
+                        xhr
                     );
 
                     if (config.error) {
