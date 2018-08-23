@@ -32,15 +32,17 @@
 import MetricsHandlerFactory from '../metrics/MetricsHandlerFactory';
 
 function MetricsHandlersController(config) {
+
+    config = config || {};
     let handlers = [];
 
     let instance;
-    let context = this.context;
-    let eventBus = config.eventBus;
+    const context = this.context;
+    const eventBus = config.eventBus;
     const Events = config.events;
 
     let metricsHandlerFactory = MetricsHandlerFactory(context).getInstance({
-        log: config.log,
+        debug: config.debug,
         eventBus: config.eventBus,
         metricsConstants: config.metricsConstants
     });

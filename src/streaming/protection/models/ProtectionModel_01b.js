@@ -46,14 +46,16 @@ import KeySystemAccess from '../vo/KeySystemAccess';
 
 function ProtectionModel_01b(config) {
 
-    let context = this.context;
-    let eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
+    config = config || {};
+    const context = this.context;
+    const eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
     const events = config.events;
-    let log = config.log;
-    let api = config.api;
-    let errHandler = config.errHandler;
+    const debug = config.debug;
+    const api = config.api;
+    const errHandler = config.errHandler;
 
     let instance,
+        logger,
         videoElement,
         keySystem,
         protectionKeyController,
@@ -82,6 +84,7 @@ function ProtectionModel_01b(config) {
         eventHandler;
 
     function setup() {
+        logger = debug.getLogger(instance);
         videoElement = null;
         keySystem = null;
         pendingSessions = [];
@@ -105,7 +108,7 @@ function ProtectionModel_01b(config) {
     }
 
     function getAllInitData() {
-        let retVal = [];
+        const retVal = [];
         for (let i = 0; i < pendingSessions.length; i++) {
             retVal.push(pendingSessions[i].initData);
         }
@@ -125,8 +128,8 @@ function ProtectionModel_01b(config) {
         // is used
         let found = false;
         for (let ksIdx = 0; ksIdx < ksConfigurations.length; ksIdx++) {
-            let systemString = ksConfigurations[ksIdx].ks.systemString;
-            let configs = ksConfigurations[ksIdx].configs;
+            const systemString = ksConfigurations[ksIdx].ks.systemString;
+            const configs = ksConfigurations[ksIdx].configs;
             let supportedAudio = null;
             let supportedVideo = null;
 
@@ -134,7 +137,7 @@ function ProtectionModel_01b(config) {
             // is used
             for (let configIdx = 0; configIdx < configs.length; configIdx++) {
                 //let audios = configs[configIdx].audioCapabilities;
-                let videos = configs[configIdx].videoCapabilities;
+                const videos = configs[configIdx].videoCapabilities;
                 // Look for supported video container/codecs
                 if (videos && videos.length !== 0) {
                     supportedVideo = []; // Indicates that we have a requested video config
@@ -155,8 +158,8 @@ function ProtectionModel_01b(config) {
 
                 // This configuration is supported
                 found = true;
-                let ksConfig = new KeySystemConfiguration(supportedAudio, supportedVideo);
-                let ks = protectionKeyController.getKeySystemBySystemString(systemString);
+                const ksConfig = new KeySystemConfiguration(supportedAudio, supportedVideo);
+                const ks = protectionKeyController.getKeySystemBySystemString(systemString);
                 eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, { data: new KeySystemAccess(ks, ksConfig) });
                 break;
             }
@@ -193,16 +196,14 @@ function ProtectionModel_01b(config) {
         }
     }
 
-    function createKeySession(initData /*, keySystemType */) {
-
+    function createKeySession(initData /*, protData, keySystemType */) {
         if (!keySystem) {
             throw new Error('Can not create sessions until you have selected a key system');
         }
 
         // Determine if creating a new session is allowed
         if (moreSessionsAllowed || sessions.length === 0) {
-
-            let newSession = { // Implements SessionToken
+            const newSession = { // Implements SessionToken
                 sessionID: null,
                 initData: initData,
                 getSessionID: function () {
@@ -247,7 +248,11 @@ function ProtectionModel_01b(config) {
 
     function closeKeySession(sessionToken) {
         // Send our request to the CDM
-        videoElement[api.cancelKeyRequest](keySystem.systemString, sessionToken.sessionID);
+        try {
+            videoElement[api.cancelKeyRequest](keySystem.systemString, sessionToken.sessionID);
+        } catch (error) {
+            eventBus.trigger(events.KEY_SESSION_CLOSED, {data: null, error: 'Error closing session (' + sessionToken.sessionID + ') ' + error.message});
+        }
     }
 
     function setServerCertificate(/*serverCertificate*/) { /* Not supported */ }
@@ -259,7 +264,6 @@ function ProtectionModel_01b(config) {
             handleEvent: function (event) {
                 let sessionToken = null;
                 switch (event.type) {
-
                     case api.needkey:
                         let initData = ArrayBuffer.isView(event.initData) ? event.initData.buffer : event.initData;
                         eventBus.trigger(events.NEED_KEY, {key: new NeedKey(initData, 'cenc')});
@@ -297,7 +301,7 @@ function ProtectionModel_01b(config) {
                             // TODO: Build error string based on key error
                             eventBus.trigger(events.KEY_ERROR, {data: new KeyError(sessionToken, msg)});
                         } else {
-                            log('No session token found for key error');
+                            logger.error('No session token found for key error');
                         }
                         break;
 
@@ -308,22 +312,20 @@ function ProtectionModel_01b(config) {
                         }
 
                         if (sessionToken) {
-                            log('DRM: Key added.');
+                            logger.debug('DRM: Key added.');
                             eventBus.trigger(events.KEY_ADDED, {data: sessionToken});//TODO not sure anything is using sessionToken? why there?
                         } else {
-                            log('No session token found for key added');
+                            logger.debug('No session token found for key added');
                         }
                         break;
 
                     case api.keymessage:
-
                         // If this CDM does not support session IDs, we will be limited
                         // to a single session
                         moreSessionsAllowed = (event.sessionId !== null) && (event.sessionId !== undefined);
 
                         // SessionIDs supported
                         if (moreSessionsAllowed) {
-
                             // Attempt to find an uninitialized token with this sessionID
                             sessionToken = findSessionByID(sessions, event.sessionId);
                             if (!sessionToken && pendingSessions.length > 0) {
@@ -333,9 +335,10 @@ function ProtectionModel_01b(config) {
                                 sessionToken = pendingSessions.shift();
                                 sessions.push(sessionToken);
                                 sessionToken.sessionID = event.sessionId;
+
+                                eventBus.trigger(events.KEY_SESSION_CREATED, {data: sessionToken});
                             }
                         } else if (pendingSessions.length > 0) { // SessionIDs not supported
-
                             sessionToken = pendingSessions.shift();
                             sessions.push(sessionToken);
 
@@ -354,7 +357,7 @@ function ProtectionModel_01b(config) {
                             eventBus.trigger(events.INTERNAL_KEY_MESSAGE, {data: new KeyMessage(sessionToken, message, event.defaultURL)});
 
                         } else {
-                            log('No session token found for key message');
+                            logger.warn('No session token found for key message');
                         }
                         break;
                 }
@@ -372,7 +375,6 @@ function ProtectionModel_01b(config) {
      * @returns {*} the session token with the given sessionID
      */
     function findSessionByID(sessionArray, sessionID) {
-
         if (!sessionID || !sessionArray) {
             return null;
         } else {
@@ -405,6 +407,7 @@ function ProtectionModel_01b(config) {
         setServerCertificate: setServerCertificate,
         loadKeySession: loadKeySession,
         removeKeySession: removeKeySession,
+        stop: reset,
         reset: reset
     };
 

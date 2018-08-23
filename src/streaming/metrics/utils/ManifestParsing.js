@@ -3,6 +3,7 @@ import Range from '../vo/Range';
 import Reporting from '../vo/Reporting';
 
 function ManifestParsing (config) {
+    config = config || {};
     let instance;
     let dashManifestModel = config.dashManifestModel;
     const constants = config.constants;
@@ -53,7 +54,6 @@ function ManifestParsing (config) {
                 if (metric.hasOwnProperty('metrics')) {
                     metricEntry.metrics = metric.metrics;
                 } else {
-                    //console.log("Invalid Metrics. metrics must be set. Ignoring.");
                     return;
                 }
 

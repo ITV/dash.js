@@ -29,10 +29,18 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 import FactoryMaker from '../../core/FactoryMaker';
+import Debug from '../../core/Debug';
 
 function MediaSourceController() {
 
-    let instance;
+    let instance,
+        logger;
+
+    const context = this.context;
+
+    function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
+    }
 
     function createMediaSource() {
 
@@ -70,7 +78,7 @@ function MediaSourceController() {
     }
 
     function setSeekable(source, start, end) {
-        if (typeof source.setLiveSeekableRange === 'function' && typeof source.clearLiveSeekableRange === 'function' &&
+        if (source && typeof source.setLiveSeekableRange === 'function' && typeof source.clearLiveSeekableRange === 'function' &&
                 source.readyState === 'open' && start >= 0 && start < end) {
             source.clearLiveSeekableRange();
             source.setLiveSeekableRange(start, end);
@@ -82,13 +90,19 @@ function MediaSourceController() {
         let buffers = source.sourceBuffers;
         const ln = buffers.length;
 
-        if (source.readyState !== 'open') return;
-
-        for (let i = 0; i < ln; i++) {
-            if (buffers[i].updating) return;
-            if (buffers[i].buffered.length === 0) return;
+        if (source.readyState !== 'open') {
+            return;
         }
 
+        for (let i = 0; i < ln; i++) {
+            if (buffers[i].updating) {
+                return;
+            }
+            if (buffers[i].buffered.length === 0) {
+                return;
+            }
+        }
+        logger.info('call to mediaSource endOfStream');
         source.endOfStream();
     }
 
@@ -100,6 +114,8 @@ function MediaSourceController() {
         setSeekable: setSeekable,
         signalEndOfStream: signalEndOfStream
     };
+
+    setup();
 
     return instance;
 }

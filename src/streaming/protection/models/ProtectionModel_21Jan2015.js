@@ -42,15 +42,18 @@ import NeedKey from '../vo/NeedKey';
 import KeyError from '../vo/KeyError';
 import KeyMessage from '../vo/KeyMessage';
 import KeySystemAccess from '../vo/KeySystemAccess';
+import ProtectionConstants from '../../constants/ProtectionConstants';
 
 function ProtectionModel_21Jan2015(config) {
 
-    let context = this.context;
-    let eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
+    config = config || {};
+    const context = this.context;
+    const eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
     const events = config.events;
-    let log = config.log;
+    const debug = config.debug;
 
     let instance,
+        logger,
         keySystem,
         videoElement,
         mediaKeys,
@@ -59,6 +62,7 @@ function ProtectionModel_21Jan2015(config) {
         protectionKeyController;
 
     function setup() {
+        logger = debug.getLogger(instance);
         keySystem = null;
         videoElement = null;
         mediaKeys = null;
@@ -106,14 +110,28 @@ function ProtectionModel_21Jan2015(config) {
         }
     }
 
+    function stop() {
+        // Close and remove not usable sessions
+        let session;
+        for (let i = 0; i < sessions.length; i++) {
+            session = sessions[i];
+            if (!session.getUsable()) {
+                removeSession(session);
+                closeKeySessionInternal(session);
+            }
+        }
+    }
+
     function getKeySystem() {
         return keySystem;
     }
 
     function getAllInitData() {
-        let retVal = [];
+        const retVal = [];
         for (let i = 0; i < sessions.length; i++) {
-            retVal.push(sessions[i].initData);
+            if (sessions[i].initData) {
+                retVal.push(sessions[i].initData);
+            }
         }
         return retVal;
     }
@@ -130,6 +148,8 @@ function ProtectionModel_21Jan2015(config) {
                 videoElement.setMediaKeys(mediaKeys).then(function () {
                     eventBus.trigger(events.INTERNAL_KEY_SYSTEM_SELECTED);
                 });
+            } else {
+                eventBus.trigger(events.INTERNAL_KEY_SYSTEM_SELECTED);
             }
 
         }).catch(function () {
@@ -144,7 +164,9 @@ function ProtectionModel_21Jan2015(config) {
         // Replacing the previous element
         if (videoElement) {
             videoElement.removeEventListener('encrypted', eventHandler);
-            videoElement.setMediaKeys(null);
+            if (videoElement.setMediaKeys) {
+                videoElement.setMediaKeys(null);
+            }
         }
 
         videoElement = mediaElement;
@@ -152,7 +174,7 @@ function ProtectionModel_21Jan2015(config) {
         // Only if we are not detaching from the existing element
         if (videoElement) {
             videoElement.addEventListener('encrypted', eventHandler);
-            if (mediaKeys) {
+            if (videoElement.setMediaKeys && mediaKeys) {
                 videoElement.setMediaKeys(mediaKeys);
             }
         }
@@ -163,25 +185,27 @@ function ProtectionModel_21Jan2015(config) {
             throw new Error('Can not set server certificate until you have selected a key system');
         }
         mediaKeys.setServerCertificate(serverCertificate).then(function () {
-            log('DRM: License server certificate successfully updated.');
+            logger.info('DRM: License server certificate successfully updated.');
             eventBus.trigger(events.SERVER_CERTIFICATE_UPDATED);
         }).catch(function (error) {
             eventBus.trigger(events.SERVER_CERTIFICATE_UPDATED, {error: 'Error updating server certificate -- ' + error.name});
         });
     }
 
-    function createKeySession(initData, sessionType) {
-
+    function createKeySession(initData, protData, sessionType) {
         if (!keySystem || !mediaKeys) {
             throw new Error('Can not create sessions until you have selected a key system');
         }
 
-        let session = mediaKeys.createSession(sessionType);
-        let sessionToken = createSessionToken(session, initData, sessionType);
+        const session = mediaKeys.createSession(sessionType);
+        const sessionToken = createSessionToken(session, initData, sessionType);
+        const ks = this.getKeySystem();
 
-        // Generate initial key request
-        session.generateRequest('cenc', initData).then(function () {
-            log('DRM: Session created.  SessionID = ' + sessionToken.getSessionID());
+        // Generate initial key request.
+        // keyids type is used for clearkey when keys are provided directly in the protection data and then request to a license server is not needed
+        const dataType = ks.systemString === ProtectionConstants.CLEARKEY_KEYSTEM_STRING && protData && protData.clearkeys ? 'keyids' : 'cenc';
+        session.generateRequest(dataType, initData).then(function () {
+            logger.debug('DRM: Session created.  SessionID = ' + sessionToken.getSessionID());
             eventBus.trigger(events.KEY_SESSION_CREATED, {data: sessionToken});
         }).catch(function (error) {
             // TODO: Better error string
@@ -191,8 +215,7 @@ function ProtectionModel_21Jan2015(config) {
     }
 
     function updateKeySession(sessionToken, message) {
-
-        let session = sessionToken.session;
+        const session = sessionToken.session;
 
         // Send our request to the key session
         if (protectionKeyController.isClearKey(keySystem)) {
@@ -203,32 +226,42 @@ function ProtectionModel_21Jan2015(config) {
         });
     }
 
-    function loadKeySession(sessionID) {
+    function loadKeySession(sessionID, initData, sessionType) {
         if (!keySystem || !mediaKeys) {
             throw new Error('Can not load sessions until you have selected a key system');
         }
 
-        let session = mediaKeys.createSession();
+        // Check if session Id is not already loaded or loading
+        for (let i = 0; i < sessions.length; i++) {
+            if (sessionID === sessions[i].sessionId) {
+                logger.warn('DRM: Ignoring session ID because we have already seen it!');
+                return;
+            }
+        }
+
+        const session = mediaKeys.createSession(sessionType);
+        const sessionToken = createSessionToken(session, initData, sessionType, sessionID);
 
         // Load persisted session data into our newly created session object
         session.load(sessionID).then(function (success) {
             if (success) {
-                let sessionToken = createSessionToken(session);
-                log('DRM: Session created.  SessionID = ' + sessionToken.getSessionID());
+                logger.debug('DRM: Session loaded.  SessionID = ' + sessionToken.getSessionID());
                 eventBus.trigger(events.KEY_SESSION_CREATED, {data: sessionToken});
             } else {
+                removeSession(sessionToken);
                 eventBus.trigger(events.KEY_SESSION_CREATED, {data: null, error: 'Could not load session! Invalid Session ID (' + sessionID + ')'});
             }
         }).catch(function (error) {
+            removeSession(sessionToken);
             eventBus.trigger(events.KEY_SESSION_CREATED, {data: null, error: 'Could not load session (' + sessionID + ')! ' + error.name});
         });
     }
 
     function removeKeySession(sessionToken) {
-        let session = sessionToken.session;
+        const session = sessionToken.session;
 
         session.remove().then(function () {
-            log('DRM: Session removed.  SessionID = ' + sessionToken.getSessionID());
+            logger.debug('DRM: Session removed.  SessionID = ' + sessionToken.getSessionID());
             eventBus.trigger(events.KEY_SESSION_REMOVED, {data: sessionToken.getSessionID()});
         }, function (error) {
             eventBus.trigger(events.KEY_SESSION_REMOVED, {data: null, error: 'Error removing session (' + sessionToken.getSessionID() + '). ' + error.name});
@@ -245,30 +278,36 @@ function ProtectionModel_21Jan2015(config) {
     }
 
     function requestKeySystemAccessInternal(ksConfigurations, idx) {
-        (function (i) {
-            let keySystem = ksConfigurations[i].ks;
-            let configs = ksConfigurations[i].configs;
-            navigator.requestMediaKeySystemAccess(keySystem.systemString, configs).then(function (mediaKeySystemAccess) {
 
+        if (navigator.requestMediaKeySystemAccess === undefined ||
+            typeof navigator.requestMediaKeySystemAccess !== 'function') {
+            eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, {error: 'Insecure origins are not allowed'});
+            return;
+        }
+
+        (function (i) {
+            const keySystem = ksConfigurations[i].ks;
+            const configs = ksConfigurations[i].configs;
+            navigator.requestMediaKeySystemAccess(keySystem.systemString, configs).then(function (mediaKeySystemAccess) {
                 // Chrome 40 does not currently implement MediaKeySystemAccess.getConfiguration()
-                let configuration = (typeof mediaKeySystemAccess.getConfiguration === 'function') ?
+                const configuration = (typeof mediaKeySystemAccess.getConfiguration === 'function') ?
                         mediaKeySystemAccess.getConfiguration() : null;
-                let keySystemAccess = new KeySystemAccess(keySystem, configuration);
+                const keySystemAccess = new KeySystemAccess(keySystem, configuration);
                 keySystemAccess.mksa = mediaKeySystemAccess;
                 eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, {data: keySystemAccess});
 
-            }).catch(function () {
+            }).catch(function (error) {
                 if (++i < ksConfigurations.length) {
                     requestKeySystemAccessInternal(ksConfigurations, i);
                 } else {
-                    eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, {error: 'Key system access denied!'});
+                    eventBus.trigger(events.KEY_SYSTEM_ACCESS_COMPLETE, {error: 'Key system access denied! ' + error.message});
                 }
             });
         })(idx);
     }
 
     function closeKeySessionInternal(sessionToken) {
-        let session = sessionToken.session;
+        const session = sessionToken.session;
 
         // Remove event listeners
         session.removeEventListener('keystatuseschange', sessionToken);
@@ -285,7 +324,6 @@ function ProtectionModel_21Jan2015(config) {
         return {
             handleEvent: function (event) {
                 switch (event.type) {
-
                     case 'encrypted':
                         if (event.initData) {
                             let initData = ArrayBuffer.isView(event.initData) ? event.initData.buffer : event.initData;
@@ -302,18 +340,45 @@ function ProtectionModel_21Jan2015(config) {
         for (let i = 0; i < sessions.length; i++) {
             if (sessions[i] === token) {
                 sessions.splice(i,1);
+                logger.debug('DRM: Session removed.  SessionID = ' + token.getSessionID());
                 break;
             }
         }
     }
 
+    function parseKeyStatus(args) {
+        // Edge and Chrome implement different version of keystatues, param are not on same order
+        let status, keyId;
+        if (args && args.length > 0) {
+            if (args[0]) {
+                if (typeof args[0] === 'string') {
+                    status = args[0];
+                } else {
+                    keyId = args[0];
+                }
+            }
+
+            if (args[1]) {
+                if (typeof args[1] === 'string') {
+                    status = args[1];
+                } else {
+                    keyId = args[1];
+                }
+            }
+        }
+        return {
+            status: status,
+            keyId: keyId
+        };
+    }
+
     // Function to create our session token objects which manage the EME
     // MediaKeySession and session-specific event handler
-    function createSessionToken(session, initData, sessionType) {
-
-        let token = { // Implements SessionToken
+    function createSessionToken(session, initData, sessionType, sessionID) {
+        const token = { // Implements SessionToken
             session: session,
             initData: initData,
+            sessionId: sessionID,
 
             // This is our main event handler for all desired MediaKeySession events
             // These events are translated into our API-independent versions of the
@@ -322,6 +387,17 @@ function ProtectionModel_21Jan2015(config) {
                 switch (event.type) {
                     case 'keystatuseschange':
                         eventBus.trigger(events.KEY_STATUSES_CHANGED, {data: this});
+                        event.target.keyStatuses.forEach(function () {
+                            let keyStatus = parseKeyStatus(arguments);
+                            switch (keyStatus.status) {
+                                case 'expired':
+                                    eventBus.trigger(events.INTERNAL_KEY_STATUS_CHANGED, {error: 'License has expired'});
+                                    break;
+                                default:
+                                    eventBus.trigger(events.INTERNAL_KEY_STATUS_CHANGED, keyStatus);
+                                    break;
+                            }
+                        });
                         break;
 
                     case 'message':
@@ -343,6 +419,17 @@ function ProtectionModel_21Jan2015(config) {
                 return session.keyStatuses;
             },
 
+            getUsable: function () {
+                let usable  = false;
+                session.keyStatuses.forEach(function () {
+                    let keyStatus = parseKeyStatus(arguments);
+                    if (keyStatus.status === 'usable') {
+                        usable = true;
+                    }
+                });
+                return usable;
+            },
+
             getSessionType: function () {
                 return sessionType;
             }
@@ -355,7 +442,7 @@ function ProtectionModel_21Jan2015(config) {
         // Register callback for session closed Promise
         session.closed.then(function () {
             removeSession(token);
-            log('DRM: Session closed.  SessionID = ' + token.getSessionID());
+            logger.debug('DRM: Session closed.  SessionID = ' + token.getSessionID());
             eventBus.trigger(events.KEY_SESSION_CLOSED, {data: token.getSessionID()});
         });
 
@@ -377,6 +464,7 @@ function ProtectionModel_21Jan2015(config) {
         loadKeySession: loadKeySession,
         removeKeySession: removeKeySession,
         closeKeySession: closeKeySession,
+        stop: stop,
         reset: reset
     };
 

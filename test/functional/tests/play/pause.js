@@ -30,13 +30,18 @@ define([
     // Test configuration (see config/testConfig.js)
     var testConfig = config.tests.pause,
         streams = tests.getTestStreams(config.tests.pause, function(stream) {
-            return (stream.type === 'VOD');
+            if (stream.type === 'VOD') {
+                if ((config.smoothEnabled === 'true' && stream.protocol === 'MSS') || (stream.protocol !== 'MSS')) {
+                    return true;
+                }
+            }
+            return false;
         });
 
     // Test constants
-    var PROGRESS_DELAY = 5; // Delay for checking progressing (in s)
+    var PROGRESS_DELAY = 15; // Delay for checking progressing (in s)
     var ASYNC_TIMEOUT = PROGRESS_DELAY + config.asyncTimeout; // Asynchronous timeout for checking progressing
-    var PAUSE_DELAY = 5; // Delay (in s) for checking is player is still paused (= not prgressing)
+    var PAUSE_DELAY = 15; // Delay (in s) for checking is player is still paused (= not prgressing)
 
     // Test variables
     var command = null,

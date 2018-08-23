@@ -35,7 +35,8 @@ import {getTimeBasedSegment} from './SegmentsUtils';
 
 function TimelineSegmentsGetter(config, isDynamic) {
 
-    let timelineConverter = config.timelineConverter;
+    config = config || {};
+    const timelineConverter = config.timelineConverter;
 
     let instance;
 
@@ -46,8 +47,7 @@ function TimelineSegmentsGetter(config, isDynamic) {
         }
     }
 
-    function getSegmentsFromTimeline(representation, requestedTime, index) {
-
+    function getSegmentsFromTimeline(representation, requestedTime, index, availabilityUpperLimit) {
         checkConfig();
 
         if (!representation) {
@@ -68,12 +68,16 @@ function TimelineSegmentsGetter(config, isDynamic) {
 
         let maxSegmentsAhead;
 
-        maxSegmentsAhead = (index > -1 || requestedTime !== null) ? 10 : Infinity;
+        if (availabilityUpperLimit) {
+            maxSegmentsAhead = availabilityUpperLimit;
+        } else {
+            maxSegmentsAhead = (index > -1 || requestedTime !== null) ? 10 : Infinity;
+        }
 
         let time = 0;
         let scaledTime = 0;
         let availabilityIdx = -1;
-        let segments = [];
+        const segments = [];
         let requiredMediaTime = null;
 
         let fragments,
@@ -127,13 +131,13 @@ function TimelineSegmentsGetter(config, isDynamic) {
                 repeat = frag.r;
             }
 
-            //For a repeated S element, t belongs only to the first segment
+            // For a repeated S element, t belongs only to the first segment
             if (frag.hasOwnProperty('t')) {
                 time = frag.t;
                 scaledTime = time / fTimescale;
             }
 
-            //This is a special case: "A negative value of the @r attribute of the S element indicates that the duration indicated in @d attribute repeats until the start of the next S element, the end of the Period or until the
+            // This is a special case: "A negative value of the @r attribute of the S element indicates that the duration indicated in @d attribute repeats until the start of the next S element, the end of the Period or until the
             // next MPD update."
             if (repeat < 0) {
                 nextFrag = fragments[i + 1];

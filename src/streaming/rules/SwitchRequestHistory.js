@@ -29,8 +29,8 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 
-import FactoryMaker from '../../core/FactoryMaker.js';
-import SwitchRequest from './SwitchRequest.js';
+import FactoryMaker from '../../core/FactoryMaker';
+import SwitchRequest from './SwitchRequest';
 
 const SWITCH_REQUEST_HISTORY_DEPTH = 8; // must be > SwitchHistoryRule SAMPLE_SIZE to enable rule
 
@@ -86,5 +86,5 @@ function SwitchRequestHistory() {
 }
 
 SwitchRequestHistory.__dashjs_factory_name = 'SwitchRequestHistory';
-let factory = FactoryMaker.getClassFactory(SwitchRequestHistory);
+const factory = FactoryMaker.getClassFactory(SwitchRequestHistory);
 export default factory;

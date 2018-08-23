@@ -119,13 +119,16 @@ function uuidProcessor() {
 
 function MssFragmentProcessor(config) {
 
-    let context = this.context;
-    let metricsModel = config.metricsModel;
-    let playbackController = config.playbackController;
-    let eventBus = config.eventBus;
-    let protectionController = config.protectionController;
+    config = config || {};
+    const context = this.context;
+    const metricsModel = config.metricsModel;
+    const playbackController = config.playbackController;
+    const eventBus = config.eventBus;
+    const protectionController = config.protectionController;
     const ISOBoxer = config.ISOBoxer;
-    const log = config.log;
+    const debug = config.debug;
+    let mssFragmentMoovProcessor,
+        mssFragmentMoofProcessor;
     let instance;
 
     function setup() {
@@ -133,33 +136,33 @@ function MssFragmentProcessor(config) {
         ISOBoxer.addBoxProcessor('saio', saioProcessor);
         ISOBoxer.addBoxProcessor('saiz', saizProcessor);
         ISOBoxer.addBoxProcessor('senc', sencProcessor);
+
+        mssFragmentMoovProcessor = MSSFragmentMoovProcessor(context).create({protectionController: protectionController,
+            constants: config.constants, ISOBoxer: ISOBoxer});
+
+        mssFragmentMoofProcessor = MSSFragmentMoofProcessor(context).create({
+                metricsModel: metricsModel,
+                playbackController: playbackController,
+                ISOBoxer: ISOBoxer,
+                eventBus: eventBus,
+                debug: debug,
+                errHandler: config.errHandler
+            });
     }
 
     function generateMoov(rep) {
-        let mssFragmentMoovProcessor = MSSFragmentMoovProcessor(context).create({protectionController: protectionController, constants: config.constants, ISOBoxer: config.ISOBoxer});
         return mssFragmentMoovProcessor.generateMoov(rep);
     }
 
     function processFragment(e, sp) {
-        if (!e) {
-            return;
+        if (!e || !e.request || !e.response) {
+            throw new Error('e parameter is missing or malformed');
         }
 
         let request = e.request;
 
-        if (!request) {
-            return;
-        }
-
         if (request.type === 'MediaSegment') {
-
             // it's a MediaSegment, let's convert fragment
-            let mssFragmentMoofProcessor = MSSFragmentMoofProcessor(context).create({
-                metricsModel: metricsModel,
-                playbackController: playbackController,
-                ISOBoxer: ISOBoxer,
-                log: log
-            });
             mssFragmentMoofProcessor.convertFragment(e, sp);
 
         } else if (request.type === 'FragmentInfoSegment') {

@@ -52,11 +52,14 @@ a:hover {
     width: 91%;
 }
 
+#commit-info {
+    font-size: smaller;
+}
+
 /****************************
         OPTIONS PANEL
 *****************************/
 .options-show {
-    height: 200px;
     transition-property: all;
     transition-duration: .5s;
 }
@@ -76,7 +79,7 @@ a:hover {
     background-color: #dfe2e2;
     margin: 2px;
     padding: 5px;
-    min-height: 195px;
+    min-height: 230px;
     float: left;
 }
 
@@ -130,6 +133,8 @@ a:hover {
 
 .col-md-9 video {
     width: 100%;
+    height: auto;
+    margin: auto;
 }
 
 .col-md-9 {
@@ -199,6 +204,15 @@ a:hover {
 
 .tab-pane {
     font-size: 14px;
+}
+
+/****************************
+    ERROR MODAL
+*****************************/
+
+.errorModalHeader {
+    background-color: #ff1a1a;
+    color: white;
 }
 
 /****************************
@@ -374,6 +388,10 @@ MOBILE SOURCE MENU MODAL LIST
     white-space:pre-wrap;
 }
 
+.dropdown-menu > li > a {
+    cursor: pointer;
+}
+
 .dropdown-submenu {
     position: relative;
 }
@@ -386,8 +404,6 @@ MOBILE SOURCE MENU MODAL LIST
     -webkit-border-radius: 0 6px 6px 6px;
     -moz-border-radius: 0 6px 6px;
     border-radius: 0 6px 6px 6px;
-    max-height: 300px;
-    overflow: auto;
 }
 
 .dropdown-submenu:hover > .dropdown-menu {

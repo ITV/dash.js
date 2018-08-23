@@ -33,23 +33,25 @@ import EventBus from '../../../core/EventBus';
 import Events from '../../../core/events/Events';
 import FactoryMaker from '../../../core/FactoryMaker';
 import Debug from '../../../core/Debug';
-import SwitchRequest from '../SwitchRequest.js';
+import SwitchRequest from '../SwitchRequest';
 
 function InsufficientBufferRule(config) {
 
+    config = config || {};
     const INSUFFICIENT_BUFFER_SAFETY_FACTOR = 0.5;
 
-    let context = this.context;
-    let log = Debug(context).getInstance().log;
-    let eventBus = EventBus(context).getInstance();
+    const context = this.context;
 
-    let metricsModel = config.metricsModel;
-    let dashMetrics = config.dashMetrics;
+    const eventBus = EventBus(context).getInstance();
+    const metricsModel = config.metricsModel;
+    const dashMetrics = config.dashMetrics;
 
     let instance,
+        logger,
         bufferStateDict;
 
     function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
         resetInitialSettings();
         eventBus.on(Events.PLAYBACK_SEEKING, onPlaybackSeeking, instance);
     }
@@ -70,7 +72,7 @@ function InsufficientBufferRule(config) {
      * If the bufferLevel is high, then InsufficientBufferRule give a high MaxIndex allowing other rules to take over.
      */
     function getMaxIndex (rulesContext) {
-        let switchRequest = SwitchRequest(context).create();
+        const switchRequest = SwitchRequest(context).create();
 
         if (!rulesContext || !rulesContext.hasOwnProperty('getMediaType')) {
             return switchRequest;
@@ -78,31 +80,30 @@ function InsufficientBufferRule(config) {
 
         checkConfig();
 
-        let mediaType = rulesContext.getMediaType();
-        let metrics = metricsModel.getReadOnlyMetricsFor(mediaType);
-        let lastBufferStateVO = (metrics.BufferState.length > 0) ? metrics.BufferState[metrics.BufferState.length - 1] : null;
+        const mediaType = rulesContext.getMediaType();
+        const metrics = metricsModel.getReadOnlyMetricsFor(mediaType);
+        const lastBufferStateVO = (metrics.BufferState.length > 0) ? metrics.BufferState[metrics.BufferState.length - 1] : null;
+        const representationInfo = rulesContext.getRepresentationInfo();
+        const fragmentDuration = representationInfo.fragmentDuration;
 
-        if (!lastBufferStateVO || !wasFirstBufferLoadedEventTriggered(mediaType, lastBufferStateVO)) {
+        // Don't ask for a bitrate change if there is not info about buffer state or if fragmentDuration is not defined
+        if (!lastBufferStateVO || !wasFirstBufferLoadedEventTriggered(mediaType, lastBufferStateVO) || !fragmentDuration) {
             return switchRequest;
         }
 
         if (lastBufferStateVO.state === BufferController.BUFFER_EMPTY) {
-            log('Switch to index 0; buffer is empty.');
+            logger.info('Switch to index 0; buffer is empty.');
             switchRequest.quality = 0;
             switchRequest.reason = 'InsufficientBufferRule: Buffer is empty';
         } else {
             const mediaInfo = rulesContext.getMediaInfo();
             const abrController = rulesContext.getAbrController();
             const throughputHistory = abrController.getThroughputHistory();
-            const representationInfo = rulesContext.getRepresentationInfo();
-            const fragmentDuration = representationInfo.fragmentDuration;
 
-            let bufferLevel = dashMetrics.getCurrentBufferLevel(metrics);
-
-            let throughput = throughputHistory.getAverageThroughput(mediaType);
-            let latency = throughputHistory.getAverageLatency(mediaType);
-
-            let bitrate = throughput * (bufferLevel / fragmentDuration) * INSUFFICIENT_BUFFER_SAFETY_FACTOR;
+            const bufferLevel = dashMetrics.getCurrentBufferLevel(metrics);
+            const throughput = throughputHistory.getAverageThroughput(mediaType);
+            const latency = throughputHistory.getAverageLatency(mediaType);
+            const bitrate = throughput * (bufferLevel / fragmentDuration) * INSUFFICIENT_BUFFER_SAFETY_FACTOR;
 
             switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, bitrate, latency);
             switchRequest.reason = 'InsufficientBufferRule: being conservative to avoid immediate rebuffering';

@@ -43,20 +43,23 @@ const FRAGMENT_MODEL_FAILED = 'failed';
 
 function FragmentModel(config) {
 
+    config = config || {};
     const context = this.context;
-    const log = Debug(context).getInstance().log;
     const eventBus = EventBus(context).getInstance();
     const metricsModel = config.metricsModel;
     const fragmentLoader = config.fragmentLoader;
 
     let instance,
+        logger,
         streamProcessor,
         executedRequests,
         loadingRequests;
 
     function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
         resetInitialSettings();
         eventBus.on(Events.LOADING_COMPLETED, onLoadingCompleted, instance);
+        eventBus.on(Events.LOADING_DATA_PROGRESS, onLoadingInProgress, instance);
         eventBus.on(Events.LOADING_ABANDONED, onLoadingAborted, instance);
     }
 
@@ -74,7 +77,7 @@ function FragmentModel(config) {
         };
 
         const isEqualMedia = function (req1, req2) {
-            return !isNaN(req1.index) && (req1.startTime === req2.startTime) && (req1.adaptationIndex === req2.adaptationIndex);
+            return !isNaN(req1.index) && (req1.startTime === req2.startTime) && (req1.adaptationIndex === req2.adaptationIndex) && (req1.type === req2.type);
         };
 
         const isEqualInit = function (req1, req2) {
@@ -83,6 +86,7 @@ function FragmentModel(config) {
 
         const check = function (requests) {
             let isLoaded = false;
+
             requests.some(req => {
                 if (isEqualMedia(request, req) || isEqualInit(request, req) || isEqualComplete(request, req)) {
                     isLoaded = true;
@@ -134,7 +138,6 @@ function FragmentModel(config) {
      * @memberof FragmentModel#
      */
     function getRequests(filter) {
-
         const states = filter ? filter.state instanceof Array ? filter.state : [filter.state] : [];
 
         let filteredRequests = [];
@@ -146,8 +149,50 @@ function FragmentModel(config) {
         return filteredRequests;
     }
 
+    function getRequestThreshold(req) {
+        return isNaN(req.duration) ? 0.25 : req.duration / 8;
+    }
+
     function removeExecutedRequestsBeforeTime(time) {
-        executedRequests = executedRequests.filter(req => isNaN(req.startTime) || req.startTime >= time);
+        executedRequests = executedRequests.filter(req => {
+            const threshold = getRequestThreshold(req);
+            return isNaN(req.startTime) || (time !== undefined ? req.startTime >= time - threshold : false);
+        });
+    }
+
+    function removeExecutedRequestsAfterTime(time) {
+        executedRequests = executedRequests.filter(req => {
+            return isNaN(req.startTime) || (time !== undefined ? req.startTime + req.duration < time : false);
+        });
+    }
+
+    function removeExecutedRequestsInTimeRange(start, end) {
+        if (end <= start + 0.5) {
+            return;
+        }
+
+        executedRequests = executedRequests.filter(req => {
+            const threshold = getRequestThreshold(req);
+            return (isNaN(req.startTime) || req.startTime >= (end - threshold)) ||
+                (isNaN(req.duration) || (req.startTime + req.duration) <= (start + threshold));
+        });
+    }
+
+    // Remove requests that are not "represented" by any of buffered ranges
+    function syncExecutedRequestsWithBufferedRange(bufferedRanges, streamDuration) {
+        if (!bufferedRanges || bufferedRanges.length === 0) {
+            removeExecutedRequestsBeforeTime();
+            return;
+        }
+
+        let start = 0;
+        for (let i = 0, ln = bufferedRanges.length; i < ln; i++) {
+            removeExecutedRequestsInTimeRange(start, bufferedRanges.start(i));
+            start = bufferedRanges.end(i);
+        }
+        if (streamDuration > 0) {
+            removeExecutedRequestsInTimeRange(start, streamDuration);
+        }
     }
 
     function abortRequests() {
@@ -156,11 +201,11 @@ function FragmentModel(config) {
     }
 
     function executeRequest(request) {
-
         switch (request.action) {
             case FragmentRequest.ACTION_COMPLETE:
                 executedRequests.push(request);
                 addSchedulingInfoMetrics(request, FRAGMENT_MODEL_EXECUTED);
+                logger.debug('executeRequest trigger STREAM_COMPLETED');
                 eventBus.trigger(Events.STREAM_COMPLETED, {
                     request: request,
                     fragmentModel: this
@@ -172,7 +217,7 @@ function FragmentModel(config) {
                 loadCurrentFragment(request);
                 break;
             default:
-                log('Unknown request action.');
+                logger.warn('Unknown request action.');
         }
     }
 
@@ -191,7 +236,7 @@ function FragmentModel(config) {
             const req = arr[i];
             const start = req.startTime;
             const end = start + req.duration;
-            threshold = threshold !== undefined ? threshold : (req.duration / 2);
+            threshold = !isNaN(threshold) ? threshold : getRequestThreshold(req);
             if ((!isNaN(start) && !isNaN(end) && ((time + threshold) >= start) && ((time - threshold) < end)) || (isNaN(start) && isNaN(time))) {
                 return req;
             }
@@ -216,7 +261,6 @@ function FragmentModel(config) {
     }
 
     function getRequestsForState(state) {
-
         let requests;
         switch (state) {
             case FRAGMENT_MODEL_LOADING:
@@ -232,7 +276,6 @@ function FragmentModel(config) {
     }
 
     function addSchedulingInfoMetrics(request, state) {
-
         metricsModel.addSchedulingInfo(
             request.mediaType,
             new Date(),
@@ -266,10 +309,21 @@ function FragmentModel(config) {
         });
     }
 
+    function onLoadingInProgress(e) {
+        if (e.sender !== fragmentLoader) return;
+
+        eventBus.trigger(Events.FRAGMENT_LOADING_PROGRESS, {
+            request: e.request,
+            response: e.response,
+            error: e.error,
+            sender: this
+        });
+    }
+
     function onLoadingAborted(e) {
         if (e.sender !== fragmentLoader) return;
 
-        eventBus.trigger(Events.FRAGMENT_LOADING_ABANDONED, {streamProcessor: this.getStreamProcessor(), request: e.request, mediaType: e.mediaType});
+        eventBus.trigger(Events.FRAGMENT_LOADING_ABANDONED, { streamProcessor: this.getStreamProcessor(), request: e.request, mediaType: e.mediaType });
     }
 
     function resetInitialSettings() {
@@ -279,12 +333,17 @@ function FragmentModel(config) {
 
     function reset() {
         eventBus.off(Events.LOADING_COMPLETED, onLoadingCompleted, this);
+        eventBus.off(Events.LOADING_DATA_PROGRESS, onLoadingInProgress, this);
         eventBus.off(Events.LOADING_ABANDONED, onLoadingAborted, this);
 
         if (fragmentLoader) {
             fragmentLoader.reset();
         }
         resetInitialSettings();
+    }
+
+    function addExecutedRequest(request) {
+        executedRequests.push(request);
     }
 
     instance = {
@@ -294,9 +353,12 @@ function FragmentModel(config) {
         isFragmentLoaded: isFragmentLoaded,
         isFragmentLoadedOrPending: isFragmentLoadedOrPending,
         removeExecutedRequestsBeforeTime: removeExecutedRequestsBeforeTime,
+        removeExecutedRequestsAfterTime: removeExecutedRequestsAfterTime,
+        syncExecutedRequestsWithBufferedRange: syncExecutedRequestsWithBufferedRange,
         abortRequests: abortRequests,
         executeRequest: executeRequest,
-        reset: reset
+        reset: reset,
+        addExecutedRequest: addExecutedRequest
     };
 
     setup();
