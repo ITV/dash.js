@@ -135,7 +135,7 @@ function HTTPLoader(cfg) {
                     errHandler.downloadError(
                         downloadErrorToRequestTypeMap[request.type],
                         request.url,
-                        xhr
+                        request
                     );
 
                     if (config.error) {
