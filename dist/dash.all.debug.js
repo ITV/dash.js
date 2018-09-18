@@ -42845,12 +42845,20 @@ function ProtectionKeyController() {
                     cp = cps[cpIdx];
                     if (cp.schemeIdUri.toLowerCase() === ks.schemeIdURI) {
                         // Look for DRM-specific ContentProtection
-                        supportedKS.push({
-                            ks: ks,
-                            initData: ks.getInitData(cp),
-                            cdmData: ks.getCDMData(),
-                            sessionId: ks.getSessionId(cp)
-                        });
+                        var initData = ks.getInitData(cp);
+                        if (!!initData) {
+                            supportedKS.push({
+                                ks: keySystems[ksIdx],
+                                initData: initData,
+                                cdmData: ks.getCDMData(),
+                                sessionId: ks.getSessionId(cp)
+                            });
+                        } else if (this.isClearKey(ks)) {
+                            supportedKS.push({
+                                ks: ks,
+                                initData: null
+                            });
+                        }
                     }
                 }
             }
@@ -42953,7 +42961,7 @@ function ProtectionKeyController() {
         try {
             return clearkeyKeySystem.getClearKeysFromProtectionData(protData, message);
         } catch (error) {
-            logger.error('Failed to retrieve clearkeys from ProtectionData: ' + error);
+            logger.error('Failed to retrieve clearkeys from ProtectionData');
             return null;
         }
     }
