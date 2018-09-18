@@ -197,7 +197,7 @@ function ProtectionKeyController() {
                         let initData = ks.getInitData(cp);
                         if (!!initData) {
                             supportedKS.push({
-                                ks: ks,
+                                ks: keySystems[ksIdx],
                                 initData: initData,
                                 cdmData: ks.getCDMData(),
                                 sessionId: ks.getSessionId(cp)
@@ -308,7 +308,7 @@ function ProtectionKeyController() {
         try {
             return clearkeyKeySystem.getClearKeysFromProtectionData(protData, message);
         } catch (error) {
-            logger.error('Failed to retrieve clearkeys from ProtectionData: ' + error);
+            logger.error('Failed to retrieve clearkeys from ProtectionData');
             return null;
         }
     }
