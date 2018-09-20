@@ -22922,8 +22922,7 @@ function ManifestUpdater() {
         manifestLoader = undefined,
         manifestModel = undefined,
         dashManifestModel = undefined,
-        mediaPlayerModel = undefined,
-        errHandler = undefined;
+        mediaPlayerModel = undefined;
 
     function setup() {
         logger = (0, _coreDebug2['default'])(context).getInstance().getLogger(instance);
@@ -22943,9 +22942,6 @@ function ManifestUpdater() {
         }
         if (config.manifestLoader) {
             manifestLoader = config.manifestLoader;
-        }
-        if (config.errHandler) {
-            errHandler = config.errHandler;
         }
     }
 
@@ -23044,8 +23040,6 @@ function ManifestUpdater() {
     function onManifestLoaded(e) {
         if (!e.error) {
             update(e.manifest);
-        } else {
-            errHandler.manifestError(e.error.message, e.error.code);
         }
     }
 
