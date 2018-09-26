@@ -59,8 +59,8 @@ function ErrorHandler() {
     }
 
     // {id: "manifest"|"SIDX"|"content"|"initialization"|"xlink", url: "", request: {XMLHttpRequest instance}}
-    function downloadError(id, url, request) {
-        eventBus.trigger(Events.ERROR, {error: 'download', event: {id: id, url: url, request: request}});
+    function downloadError(id, url, request, response) {
+        eventBus.trigger(Events.ERROR, {error: 'download', event: {id: id, url: url, request: request, response: response}});
     }
 
     // {message: "", id: "parse"|"nostreams", manifest: {parsed manifest}}

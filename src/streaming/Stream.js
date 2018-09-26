@@ -281,7 +281,7 @@ function Stream(config) {
     function onProtectionError(event) {
         if (event.error) {
             errHandler.mediaKeySessionError(event);
-            logger.fatal(event.error);
+            logger.fatal(event);
             reset();
         }
     }
