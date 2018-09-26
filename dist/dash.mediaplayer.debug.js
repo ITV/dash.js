@@ -27437,7 +27437,7 @@ function Stream(config) {
     function onProtectionError(event) {
         if (event.error) {
             errHandler.mediaKeySessionError(event);
-            logger.fatal(event.error);
+            logger.fatal(event);
             reset();
         }
     }
@@ -38132,7 +38132,7 @@ function HTTPLoader(cfg) {
                         internalLoad(config, remainingAttempts);
                     }, mediaPlayerModel.getRetryIntervalForType(request.type)));
                 } else {
-                    errHandler.downloadError(downloadErrorToRequestTypeMap[request.type], request.url, request);
+                    errHandler.downloadError(downloadErrorToRequestTypeMap[request.type], request.url, request, httpRequest.response);
 
                     if (config.error) {
                         config.error(request, 'error', httpRequest.response.statusText);
@@ -44879,8 +44879,8 @@ function ErrorHandler() {
     }
 
     // {id: "manifest"|"SIDX"|"content"|"initialization"|"xlink", url: "", request: {XMLHttpRequest instance}}
-    function downloadError(id, url, request) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'download', event: { id: id, url: url, request: request } });
+    function downloadError(id, url, request, response) {
+        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'download', event: { id: id, url: url, request: request, response: response } });
     }
 
     // {message: "", id: "parse"|"nostreams", manifest: {parsed manifest}}
