@@ -51,9 +51,10 @@ function ErrorHandler() {
      * @param {string} id "manifest"|"SIDX"|"content"|"initialization"|"xlink"
      * @param {string} url ""
      * @param {object} request {XMLHttpRequest instance}
+     * @param {object} response {XMLHttpRequest instance}
      * @deprecated
      */
-    function downloadError(id, url, request) {
+    function downloadError(id, url, request, response) {
         eventBus.trigger(Events.ERROR, {error: 'download', event: {id: id, url: url, request: request, response: response}});
     }
 
