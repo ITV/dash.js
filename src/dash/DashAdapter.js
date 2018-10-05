@@ -468,6 +468,9 @@ function DashAdapter() {
         const duration = eventBox.event_duration;
         const id = eventBox.id;
         const messageData = eventBox.message_data;
+
+        console.log('XXXX DashAdapter setting messageData: ', messageData);
+
         const presentationTime = startTime * timescale + presentationTimeDelta;
 
         if (!eventStreams[schemeIdUri]) return null;
@@ -485,6 +488,8 @@ function DashAdapter() {
     }
 
     function getEventsFor(info, streamProcessor) {
+        console.log('XXXX DashAdapter.getEventsFor, info: ', info + ' streamProcessor ', streamProcessor);
+
         let events = [];
 
         if (voPeriods.length === 0) {
@@ -501,6 +506,7 @@ function DashAdapter() {
             events = dashManifestModel.getEventStreamForRepresentation(manifest, getRepresentationForRepresentationInfo(info, streamProcessor.getRepresentationController()));
         }
 
+        console.log('XXXX DashAdapter.getEventsFor, events: ', events);
         return events;
     }
 
