@@ -821,8 +821,6 @@ function DashManifestModel(config) {
                         eventStreams[i].Event_asArray[j].messageData ||
                         eventStreams[i].Event_asArray[j].__text;
 
-                    console.log('XXXX DashManifestModel setting messageData: ', event.messageData);
-
                     events.push(event);
                 }
             }
@@ -844,7 +842,6 @@ function DashManifestModel(config) {
 
             if (inbandStreams[i].hasOwnProperty(Constants.SCHEME_ID_URI)) {
                 eventStream.schemeIdUri = inbandStreams[i].schemeIdUri;
-                console.log('XXXX found scheme id URI: ' + eventStream.schemeIdUri);
             } else {
                 throw new Error('Invalid EventStream. SchemeIdUri has to be set');
             }
@@ -871,7 +868,6 @@ function DashManifestModel(config) {
                 adaptationArray = periodArray.AdaptationSet_asArray[adaptation.index];
                 if (adaptationArray) {
                     inbandStreams = adaptationArray.InbandEventStream_asArray;
-                    console.log('XXXX getEventStreamForAdaptationSet inbandStreams: ', inbandStreams);
                 }
             }
         }
@@ -893,7 +889,6 @@ function DashManifestModel(config) {
                     representationArray = adaptationArray.Representation_asArray[representation.index];
                     if (representationArray) {
                         inbandStreams = representationArray.InbandEventStream_asArray;
-                        console.log('XXXX getEventStreamForRepresentation inbandStreams: ', inbandStreams);
                     }
                 }
             }
