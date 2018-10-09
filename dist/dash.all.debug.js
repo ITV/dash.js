@@ -16056,9 +16056,6 @@ function DashAdapter() {
         var duration = eventBox.event_duration;
         var id = eventBox.id;
         var messageData = eventBox.message_data;
-
-        console.log('XXXX DashAdapter setting messageData: ', messageData);
-
         var presentationTime = startTime * timescale + presentationTimeDelta;
 
         if (!eventStreams[schemeIdUri]) return null;
@@ -16076,8 +16073,6 @@ function DashAdapter() {
     }
 
     function getEventsFor(info, streamProcessor) {
-        console.log('XXXX DashAdapter.getEventsFor, info: ', info + ' streamProcessor ', streamProcessor);
-
         var events = [];
 
         if (voPeriods.length === 0) {
@@ -16094,7 +16089,6 @@ function DashAdapter() {
             events = dashManifestModel.getEventStreamForRepresentation(manifest, getRepresentationForRepresentationInfo(info, streamProcessor.getRepresentationController()));
         }
 
-        console.log('XXXX DashAdapter.getEventsFor, events: ', events);
         return events;
     }
 
@@ -19437,8 +19431,6 @@ function DashManifestModel(config) {
                     // string representation'.
                     _event.messageData = eventStreams[i].Event_asArray[j].messageData || eventStreams[i].Event_asArray[j].__text;
 
-                    console.log('XXXX DashManifestModel setting messageData: ', _event.messageData);
-
                     events.push(_event);
                 }
             }
@@ -19460,7 +19452,6 @@ function DashManifestModel(config) {
 
             if (inbandStreams[i].hasOwnProperty(_streamingConstantsConstants2['default'].SCHEME_ID_URI)) {
                 eventStream.schemeIdUri = inbandStreams[i].schemeIdUri;
-                console.log('XXXX found scheme id URI: ' + eventStream.schemeIdUri);
             } else {
                 throw new Error('Invalid EventStream. SchemeIdUri has to be set');
             }
@@ -19487,7 +19478,6 @@ function DashManifestModel(config) {
                 adaptationArray = periodArray.AdaptationSet_asArray[adaptation.index];
                 if (adaptationArray) {
                     inbandStreams = adaptationArray.InbandEventStream_asArray;
-                    console.log('XXXX getEventStreamForAdaptationSet inbandStreams: ', inbandStreams);
                 }
             }
         }
@@ -19509,7 +19499,6 @@ function DashManifestModel(config) {
                     representationArray = adaptationArray.Representation_asArray[representation.index];
                     if (representationArray) {
                         inbandStreams = representationArray.InbandEventStream_asArray;
-                        console.log('XXXX getEventStreamForRepresentation inbandStreams: ', inbandStreams);
                     }
                 }
             }
