@@ -1991,19 +1991,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _srcStreamingMediaPlayer = _dereq_(90);
+var _srcStreamingMediaPlayer = _dereq_(92);
 
 var _srcStreamingMediaPlayer2 = _interopRequireDefault(_srcStreamingMediaPlayer);
 
-var _srcCoreFactoryMaker = _dereq_(44);
+var _srcCoreFactoryMaker = _dereq_(47);
 
 var _srcCoreFactoryMaker2 = _interopRequireDefault(_srcCoreFactoryMaker);
 
-var _srcCoreDebug = _dereq_(42);
+var _srcCoreDebug = _dereq_(45);
 
 var _srcCoreDebug2 = _interopRequireDefault(_srcCoreDebug);
 
-var _srcCoreVersion = _dereq_(45);
+var _srcCoreVersion = _dereq_(48);
 
 // Shove both of these into the global scope
 var context = typeof window !== 'undefined' && window || global;
@@ -2025,7 +2025,7 @@ exports.Debug = _srcCoreDebug2['default'];
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"42":42,"44":44,"45":45,"90":90}],5:[function(_dereq_,module,exports){
+},{"45":45,"47":47,"48":48,"92":92}],5:[function(_dereq_,module,exports){
 /*! codem-isoboxer v0.3.5 https://github.com/madebyhiro/codem-isoboxer/blob/master/LICENSE.txt */
 var ISOBoxer = {};
 
@@ -3251,8 +3251,134 @@ module.exports = function equal(a, b) {
 };
 
 },{}],7:[function(_dereq_,module,exports){
+var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+;(function (exports) {
+	'use strict';
+
+  var Arr = (typeof Uint8Array !== 'undefined')
+    ? Uint8Array
+    : Array
+
+	var PLUS   = '+'.charCodeAt(0)
+	var SLASH  = '/'.charCodeAt(0)
+	var NUMBER = '0'.charCodeAt(0)
+	var LOWER  = 'a'.charCodeAt(0)
+	var UPPER  = 'A'.charCodeAt(0)
+	var PLUS_URL_SAFE = '-'.charCodeAt(0)
+	var SLASH_URL_SAFE = '_'.charCodeAt(0)
+
+	function decode (elt) {
+		var code = elt.charCodeAt(0)
+		if (code === PLUS ||
+		    code === PLUS_URL_SAFE)
+			return 62 // '+'
+		if (code === SLASH ||
+		    code === SLASH_URL_SAFE)
+			return 63 // '/'
+		if (code < NUMBER)
+			return -1 //no match
+		if (code < NUMBER + 10)
+			return code - NUMBER + 26 + 26
+		if (code < UPPER + 26)
+			return code - UPPER
+		if (code < LOWER + 26)
+			return code - LOWER + 26
+	}
+
+	function b64ToByteArray (b64) {
+		var i, j, l, tmp, placeHolders, arr
+
+		if (b64.length % 4 > 0) {
+			throw new Error('Invalid string. Length must be a multiple of 4')
+		}
+
+		// the number of equal signs (place holders)
+		// if there are two placeholders, than the two characters before it
+		// represent one byte
+		// if there is only one, then the three characters before it represent 2 bytes
+		// this is just a cheap hack to not do indexOf twice
+		var len = b64.length
+		placeHolders = '=' === b64.charAt(len - 2) ? 2 : '=' === b64.charAt(len - 1) ? 1 : 0
+
+		// base64 is 4/3 + up to two characters of the original data
+		arr = new Arr(b64.length * 3 / 4 - placeHolders)
+
+		// if there are placeholders, only get up to the last complete 4 chars
+		l = placeHolders > 0 ? b64.length - 4 : b64.length
+
+		var L = 0
+
+		function push (v) {
+			arr[L++] = v
+		}
+
+		for (i = 0, j = 0; i < l; i += 4, j += 3) {
+			tmp = (decode(b64.charAt(i)) << 18) | (decode(b64.charAt(i + 1)) << 12) | (decode(b64.charAt(i + 2)) << 6) | decode(b64.charAt(i + 3))
+			push((tmp & 0xFF0000) >> 16)
+			push((tmp & 0xFF00) >> 8)
+			push(tmp & 0xFF)
+		}
+
+		if (placeHolders === 2) {
+			tmp = (decode(b64.charAt(i)) << 2) | (decode(b64.charAt(i + 1)) >> 4)
+			push(tmp & 0xFF)
+		} else if (placeHolders === 1) {
+			tmp = (decode(b64.charAt(i)) << 10) | (decode(b64.charAt(i + 1)) << 4) | (decode(b64.charAt(i + 2)) >> 2)
+			push((tmp >> 8) & 0xFF)
+			push(tmp & 0xFF)
+		}
+
+		return arr
+	}
+
+	function uint8ToBase64 (uint8) {
+		var i,
+			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
+			output = "",
+			temp, length
+
+		function encode (num) {
+			return lookup.charAt(num)
+		}
+
+		function tripletToBase64 (num) {
+			return encode(num >> 18 & 0x3F) + encode(num >> 12 & 0x3F) + encode(num >> 6 & 0x3F) + encode(num & 0x3F)
+		}
+
+		// go through the array every three bytes, we'll deal with trailing stuff later
+		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
+			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2])
+			output += tripletToBase64(temp)
+		}
+
+		// pad the end with zeros, but make sure to not forget the extra bytes
+		switch (extraBytes) {
+			case 1:
+				temp = uint8[uint8.length - 1]
+				output += encode(temp >> 2)
+				output += encode((temp << 4) & 0x3F)
+				output += '=='
+				break
+			case 2:
+				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1])
+				output += encode(temp >> 10)
+				output += encode((temp >> 4) & 0x3F)
+				output += encode((temp << 2) & 0x3F)
+				output += '='
+				break
+		}
+
+		return output
+	}
+
+	exports.toByteArray = b64ToByteArray
+	exports.fromByteArray = uint8ToBase64
+}(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
 },{}],8:[function(_dereq_,module,exports){
+
+},{}],9:[function(_dereq_,module,exports){
 (function (global){
 /*!
  * The buffer module from node.js, for the browser.
@@ -3264,9 +3390,9 @@ module.exports = function equal(a, b) {
 
 'use strict'
 
-var base64 = _dereq_(9)
-var ieee754 = _dereq_(10)
-var isArray = _dereq_(11)
+var base64 = _dereq_(7)
+var ieee754 = _dereq_(13)
+var isArray = _dereq_(10)
 
 exports.Buffer = Buffer
 exports.SlowBuffer = SlowBuffer
@@ -4805,226 +4931,126 @@ function blitBuffer (src, dst, offset, length) {
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"10":10,"11":11,"9":9}],9:[function(_dereq_,module,exports){
-var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-;(function (exports) {
-	'use strict';
-
-  var Arr = (typeof Uint8Array !== 'undefined')
-    ? Uint8Array
-    : Array
-
-	var PLUS   = '+'.charCodeAt(0)
-	var SLASH  = '/'.charCodeAt(0)
-	var NUMBER = '0'.charCodeAt(0)
-	var LOWER  = 'a'.charCodeAt(0)
-	var UPPER  = 'A'.charCodeAt(0)
-	var PLUS_URL_SAFE = '-'.charCodeAt(0)
-	var SLASH_URL_SAFE = '_'.charCodeAt(0)
-
-	function decode (elt) {
-		var code = elt.charCodeAt(0)
-		if (code === PLUS ||
-		    code === PLUS_URL_SAFE)
-			return 62 // '+'
-		if (code === SLASH ||
-		    code === SLASH_URL_SAFE)
-			return 63 // '/'
-		if (code < NUMBER)
-			return -1 //no match
-		if (code < NUMBER + 10)
-			return code - NUMBER + 26 + 26
-		if (code < UPPER + 26)
-			return code - UPPER
-		if (code < LOWER + 26)
-			return code - LOWER + 26
-	}
-
-	function b64ToByteArray (b64) {
-		var i, j, l, tmp, placeHolders, arr
-
-		if (b64.length % 4 > 0) {
-			throw new Error('Invalid string. Length must be a multiple of 4')
-		}
-
-		// the number of equal signs (place holders)
-		// if there are two placeholders, than the two characters before it
-		// represent one byte
-		// if there is only one, then the three characters before it represent 2 bytes
-		// this is just a cheap hack to not do indexOf twice
-		var len = b64.length
-		placeHolders = '=' === b64.charAt(len - 2) ? 2 : '=' === b64.charAt(len - 1) ? 1 : 0
-
-		// base64 is 4/3 + up to two characters of the original data
-		arr = new Arr(b64.length * 3 / 4 - placeHolders)
-
-		// if there are placeholders, only get up to the last complete 4 chars
-		l = placeHolders > 0 ? b64.length - 4 : b64.length
-
-		var L = 0
-
-		function push (v) {
-			arr[L++] = v
-		}
-
-		for (i = 0, j = 0; i < l; i += 4, j += 3) {
-			tmp = (decode(b64.charAt(i)) << 18) | (decode(b64.charAt(i + 1)) << 12) | (decode(b64.charAt(i + 2)) << 6) | decode(b64.charAt(i + 3))
-			push((tmp & 0xFF0000) >> 16)
-			push((tmp & 0xFF00) >> 8)
-			push(tmp & 0xFF)
-		}
-
-		if (placeHolders === 2) {
-			tmp = (decode(b64.charAt(i)) << 2) | (decode(b64.charAt(i + 1)) >> 4)
-			push(tmp & 0xFF)
-		} else if (placeHolders === 1) {
-			tmp = (decode(b64.charAt(i)) << 10) | (decode(b64.charAt(i + 1)) << 4) | (decode(b64.charAt(i + 2)) >> 2)
-			push((tmp >> 8) & 0xFF)
-			push(tmp & 0xFF)
-		}
-
-		return arr
-	}
-
-	function uint8ToBase64 (uint8) {
-		var i,
-			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
-			output = "",
-			temp, length
-
-		function encode (num) {
-			return lookup.charAt(num)
-		}
-
-		function tripletToBase64 (num) {
-			return encode(num >> 18 & 0x3F) + encode(num >> 12 & 0x3F) + encode(num >> 6 & 0x3F) + encode(num & 0x3F)
-		}
-
-		// go through the array every three bytes, we'll deal with trailing stuff later
-		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
-			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2])
-			output += tripletToBase64(temp)
-		}
-
-		// pad the end with zeros, but make sure to not forget the extra bytes
-		switch (extraBytes) {
-			case 1:
-				temp = uint8[uint8.length - 1]
-				output += encode(temp >> 2)
-				output += encode((temp << 4) & 0x3F)
-				output += '=='
-				break
-			case 2:
-				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1])
-				output += encode(temp >> 10)
-				output += encode((temp >> 4) & 0x3F)
-				output += encode((temp << 2) & 0x3F)
-				output += '='
-				break
-		}
-
-		return output
-	}
-
-	exports.toByteArray = b64ToByteArray
-	exports.fromByteArray = uint8ToBase64
-}(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
-
-},{}],10:[function(_dereq_,module,exports){
-exports.read = function (buffer, offset, isLE, mLen, nBytes) {
-  var e, m
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var nBits = -7
-  var i = isLE ? (nBytes - 1) : 0
-  var d = isLE ? -1 : 1
-  var s = buffer[offset + i]
-
-  i += d
-
-  e = s & ((1 << (-nBits)) - 1)
-  s >>= (-nBits)
-  nBits += eLen
-  for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  m = e & ((1 << (-nBits)) - 1)
-  e >>= (-nBits)
-  nBits += mLen
-  for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  if (e === 0) {
-    e = 1 - eBias
-  } else if (e === eMax) {
-    return m ? NaN : ((s ? -1 : 1) * Infinity)
-  } else {
-    m = m + Math.pow(2, mLen)
-    e = e - eBias
-  }
-  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
-}
-
-exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
-  var e, m, c
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
-  var i = isLE ? 0 : (nBytes - 1)
-  var d = isLE ? 1 : -1
-  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
-
-  value = Math.abs(value)
-
-  if (isNaN(value) || value === Infinity) {
-    m = isNaN(value) ? 1 : 0
-    e = eMax
-  } else {
-    e = Math.floor(Math.log(value) / Math.LN2)
-    if (value * (c = Math.pow(2, -e)) < 1) {
-      e--
-      c *= 2
-    }
-    if (e + eBias >= 1) {
-      value += rt / c
-    } else {
-      value += rt * Math.pow(2, 1 - eBias)
-    }
-    if (value * c >= 2) {
-      e++
-      c /= 2
-    }
-
-    if (e + eBias >= eMax) {
-      m = 0
-      e = eMax
-    } else if (e + eBias >= 1) {
-      m = (value * c - 1) * Math.pow(2, mLen)
-      e = e + eBias
-    } else {
-      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
-      e = 0
-    }
-  }
-
-  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
-
-  e = (e << mLen) | m
-  eLen += mLen
-  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
-
-  buffer[offset + i - d] |= s * 128
-}
-
-},{}],11:[function(_dereq_,module,exports){
+},{"10":10,"13":13,"7":7}],10:[function(_dereq_,module,exports){
 var toString = {}.toString;
 
 module.exports = Array.isArray || function (arr) {
   return toString.call(arr) == '[object Array]';
 };
 
-},{}],12:[function(_dereq_,module,exports){
+},{}],11:[function(_dereq_,module,exports){
+(function (Buffer){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// NOTE: These type checking functions intentionally don't use `instanceof`
+// because it is fragile and can be easily faked with `Object.create()`.
+
+function isArray(arg) {
+  if (Array.isArray) {
+    return Array.isArray(arg);
+  }
+  return objectToString(arg) === '[object Array]';
+}
+exports.isArray = isArray;
+
+function isBoolean(arg) {
+  return typeof arg === 'boolean';
+}
+exports.isBoolean = isBoolean;
+
+function isNull(arg) {
+  return arg === null;
+}
+exports.isNull = isNull;
+
+function isNullOrUndefined(arg) {
+  return arg == null;
+}
+exports.isNullOrUndefined = isNullOrUndefined;
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+exports.isNumber = isNumber;
+
+function isString(arg) {
+  return typeof arg === 'string';
+}
+exports.isString = isString;
+
+function isSymbol(arg) {
+  return typeof arg === 'symbol';
+}
+exports.isSymbol = isSymbol;
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+exports.isUndefined = isUndefined;
+
+function isRegExp(re) {
+  return objectToString(re) === '[object RegExp]';
+}
+exports.isRegExp = isRegExp;
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+exports.isObject = isObject;
+
+function isDate(d) {
+  return objectToString(d) === '[object Date]';
+}
+exports.isDate = isDate;
+
+function isError(e) {
+  return (objectToString(e) === '[object Error]' || e instanceof Error);
+}
+exports.isError = isError;
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+exports.isFunction = isFunction;
+
+function isPrimitive(arg) {
+  return arg === null ||
+         typeof arg === 'boolean' ||
+         typeof arg === 'number' ||
+         typeof arg === 'string' ||
+         typeof arg === 'symbol' ||  // ES6 symbol
+         typeof arg === 'undefined';
+}
+exports.isPrimitive = isPrimitive;
+
+exports.isBuffer = Buffer.isBuffer;
+
+function objectToString(o) {
+  return Object.prototype.toString.call(o);
+}
+
+}).call(this,{"isBuffer":_dereq_(15)})
+
+},{"15":15}],12:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5328,6 +5354,92 @@ function isUndefined(arg) {
 }
 
 },{}],13:[function(_dereq_,module,exports){
+exports.read = function (buffer, offset, isLE, mLen, nBytes) {
+  var e, m
+  var eLen = (nBytes * 8) - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var nBits = -7
+  var i = isLE ? (nBytes - 1) : 0
+  var d = isLE ? -1 : 1
+  var s = buffer[offset + i]
+
+  i += d
+
+  e = s & ((1 << (-nBits)) - 1)
+  s >>= (-nBits)
+  nBits += eLen
+  for (; nBits > 0; e = (e * 256) + buffer[offset + i], i += d, nBits -= 8) {}
+
+  m = e & ((1 << (-nBits)) - 1)
+  e >>= (-nBits)
+  nBits += mLen
+  for (; nBits > 0; m = (m * 256) + buffer[offset + i], i += d, nBits -= 8) {}
+
+  if (e === 0) {
+    e = 1 - eBias
+  } else if (e === eMax) {
+    return m ? NaN : ((s ? -1 : 1) * Infinity)
+  } else {
+    m = m + Math.pow(2, mLen)
+    e = e - eBias
+  }
+  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
+}
+
+exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
+  var e, m, c
+  var eLen = (nBytes * 8) - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
+  var i = isLE ? 0 : (nBytes - 1)
+  var d = isLE ? 1 : -1
+  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
+
+  value = Math.abs(value)
+
+  if (isNaN(value) || value === Infinity) {
+    m = isNaN(value) ? 1 : 0
+    e = eMax
+  } else {
+    e = Math.floor(Math.log(value) / Math.LN2)
+    if (value * (c = Math.pow(2, -e)) < 1) {
+      e--
+      c *= 2
+    }
+    if (e + eBias >= 1) {
+      value += rt / c
+    } else {
+      value += rt * Math.pow(2, 1 - eBias)
+    }
+    if (value * c >= 2) {
+      e++
+      c /= 2
+    }
+
+    if (e + eBias >= eMax) {
+      m = 0
+      e = eMax
+    } else if (e + eBias >= 1) {
+      m = ((value * c) - 1) * Math.pow(2, mLen)
+      e = e + eBias
+    } else {
+      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
+      e = 0
+    }
+  }
+
+  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
+
+  e = (e << mLen) | m
+  eLen += mLen
+  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
+
+  buffer[offset + i - d] |= s * 128
+}
+
+},{}],14:[function(_dereq_,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -5352,11 +5464,11 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],14:[function(_dereq_,module,exports){
+},{}],15:[function(_dereq_,module,exports){
 /*!
  * Determine if an object is a Buffer
  *
- * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @author   Feross Aboukhadijeh <https://feross.org>
  * @license  MIT
  */
 
@@ -5375,7 +5487,56 @@ function isSlowBuffer (obj) {
   return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0))
 }
 
-},{}],15:[function(_dereq_,module,exports){
+},{}],16:[function(_dereq_,module,exports){
+(function (process){
+'use strict';
+
+if (!process.version ||
+    process.version.indexOf('v0.') === 0 ||
+    process.version.indexOf('v1.') === 0 && process.version.indexOf('v1.8.') !== 0) {
+  module.exports = { nextTick: nextTick };
+} else {
+  module.exports = process
+}
+
+function nextTick(fn, arg1, arg2, arg3) {
+  if (typeof fn !== 'function') {
+    throw new TypeError('"callback" argument must be a function');
+  }
+  var len = arguments.length;
+  var args, i;
+  switch (len) {
+  case 0:
+  case 1:
+    return process.nextTick(fn);
+  case 2:
+    return process.nextTick(function afterTickOne() {
+      fn.call(null, arg1);
+    });
+  case 3:
+    return process.nextTick(function afterTickTwo() {
+      fn.call(null, arg1, arg2);
+    });
+  case 4:
+    return process.nextTick(function afterTickThree() {
+      fn.call(null, arg1, arg2, arg3);
+    });
+  default:
+    args = new Array(len - 1);
+    i = 0;
+    while (i < args.length) {
+      args[i++] = arguments[i];
+    }
+    return process.nextTick(function afterTick() {
+      fn.apply(null, args);
+    });
+  }
+}
+
+
+}).call(this,_dereq_(17))
+
+},{"17":17}],17:[function(_dereq_,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -5546,6 +5707,10 @@ process.off = noop;
 process.removeListener = noop;
 process.removeAllListeners = noop;
 process.emit = noop;
+process.prependListener = noop;
+process.prependOnceListener = noop;
+
+process.listeners = function (name) { return [] }
 
 process.binding = function (name) {
     throw new Error('process.binding is not supported');
@@ -5557,10 +5722,31 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],16:[function(_dereq_,module,exports){
-module.exports = _dereq_(17)
+},{}],18:[function(_dereq_,module,exports){
+module.exports = _dereq_(19);
 
-},{"17":17}],17:[function(_dereq_,module,exports){
+},{"19":19}],19:[function(_dereq_,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 // a duplex stream is just a stream that is both readable and writable.
 // Since JS doesn't have multiple prototypal inheritance, this class
 // prototypally inherits from Readable, and then parasitically from
@@ -5570,6 +5756,10 @@ module.exports = _dereq_(17)
 
 /*<replacement>*/
 
+var pna = _dereq_(16);
+/*</replacement>*/
+
+/*<replacement>*/
 var objectKeys = Object.keys || function (obj) {
   var keys = [];
   for (var key in obj) {
@@ -5581,23 +5771,22 @@ var objectKeys = Object.keys || function (obj) {
 module.exports = Duplex;
 
 /*<replacement>*/
-var processNextTick = _dereq_(26);
+var util = _dereq_(11);
+util.inherits = _dereq_(14);
 /*</replacement>*/
 
-/*<replacement>*/
-var util = _dereq_(24);
-util.inherits = _dereq_(13);
-/*</replacement>*/
-
-var Readable = _dereq_(19);
-var Writable = _dereq_(21);
+var Readable = _dereq_(21);
+var Writable = _dereq_(23);
 
 util.inherits(Duplex, Readable);
 
-var keys = objectKeys(Writable.prototype);
-for (var v = 0; v < keys.length; v++) {
-  var method = keys[v];
-  if (!Duplex.prototype[method]) Duplex.prototype[method] = Writable.prototype[method];
+{
+  // avoid scope creep, the keys array can then be collected
+  var keys = objectKeys(Writable.prototype);
+  for (var v = 0; v < keys.length; v++) {
+    var method = keys[v];
+    if (!Duplex.prototype[method]) Duplex.prototype[method] = Writable.prototype[method];
+  }
 }
 
 function Duplex(options) {
@@ -5616,6 +5805,16 @@ function Duplex(options) {
   this.once('end', onend);
 }
 
+Object.defineProperty(Duplex.prototype, 'writableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function () {
+    return this._writableState.highWaterMark;
+  }
+});
+
 // the no-half-open enforcer
 function onend() {
   // if we allow half-open state, or if the writable side ended,
@@ -5624,19 +5823,62 @@ function onend() {
 
   // no more data can be written.
   // But allow more writes to happen in this tick.
-  processNextTick(onEndNT, this);
+  pna.nextTick(onEndNT, this);
 }
 
 function onEndNT(self) {
   self.end();
 }
 
-function forEach(xs, f) {
-  for (var i = 0, l = xs.length; i < l; i++) {
-    f(xs[i], i);
+Object.defineProperty(Duplex.prototype, 'destroyed', {
+  get: function () {
+    if (this._readableState === undefined || this._writableState === undefined) {
+      return false;
+    }
+    return this._readableState.destroyed && this._writableState.destroyed;
+  },
+  set: function (value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (this._readableState === undefined || this._writableState === undefined) {
+      return;
+    }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._readableState.destroyed = value;
+    this._writableState.destroyed = value;
   }
-}
-},{"13":13,"19":19,"21":21,"24":24,"26":26}],18:[function(_dereq_,module,exports){
+});
+
+Duplex.prototype._destroy = function (err, cb) {
+  this.push(null);
+  this.end();
+
+  pna.nextTick(cb, err);
+};
+},{"11":11,"14":14,"16":16,"21":21,"23":23}],20:[function(_dereq_,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 // a passthrough stream.
 // basically just the most minimal sort of Transform stream.
 // Every written chunk gets output as-is.
@@ -5645,11 +5887,11 @@ function forEach(xs, f) {
 
 module.exports = PassThrough;
 
-var Transform = _dereq_(20);
+var Transform = _dereq_(22);
 
 /*<replacement>*/
-var util = _dereq_(24);
-util.inherits = _dereq_(13);
+var util = _dereq_(11);
+util.inherits = _dereq_(14);
 /*</replacement>*/
 
 util.inherits(PassThrough, Transform);
@@ -5663,18 +5905,40 @@ function PassThrough(options) {
 PassThrough.prototype._transform = function (chunk, encoding, cb) {
   cb(null, chunk);
 };
-},{"13":13,"20":20,"24":24}],19:[function(_dereq_,module,exports){
-(function (process){
+},{"11":11,"14":14,"22":22}],21:[function(_dereq_,module,exports){
+(function (process,global){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 'use strict';
+
+/*<replacement>*/
+
+var pna = _dereq_(16);
+/*</replacement>*/
 
 module.exports = Readable;
 
 /*<replacement>*/
-var processNextTick = _dereq_(26);
-/*</replacement>*/
-
-/*<replacement>*/
-var isArray = _dereq_(25);
+var isArray = _dereq_(27);
 /*</replacement>*/
 
 /*<replacement>*/
@@ -5692,28 +5956,29 @@ var EElistenerCount = function (emitter, type) {
 /*</replacement>*/
 
 /*<replacement>*/
-var Stream;
-(function () {
-  try {
-    Stream = _dereq_('st' + 'ream');
-  } catch (_) {} finally {
-    if (!Stream) Stream = _dereq_(12).EventEmitter;
-  }
-})();
-/*</replacement>*/
-
-var Buffer = _dereq_(8).Buffer;
-/*<replacement>*/
-var bufferShim = _dereq_(23);
+var Stream = _dereq_(26);
 /*</replacement>*/
 
 /*<replacement>*/
-var util = _dereq_(24);
-util.inherits = _dereq_(13);
+
+var Buffer = _dereq_(33).Buffer;
+var OurUint8Array = global.Uint8Array || function () {};
+function _uint8ArrayToBuffer(chunk) {
+  return Buffer.from(chunk);
+}
+function _isUint8Array(obj) {
+  return Buffer.isBuffer(obj) || obj instanceof OurUint8Array;
+}
+
 /*</replacement>*/
 
 /*<replacement>*/
-var debugUtil = _dereq_(7);
+var util = _dereq_(11);
+util.inherits = _dereq_(14);
+/*</replacement>*/
+
+/*<replacement>*/
+var debugUtil = _dereq_(8);
 var debug = void 0;
 if (debugUtil && debugUtil.debuglog) {
   debug = debugUtil.debuglog('stream');
@@ -5722,44 +5987,54 @@ if (debugUtil && debugUtil.debuglog) {
 }
 /*</replacement>*/
 
-var BufferList = _dereq_(22);
+var BufferList = _dereq_(24);
+var destroyImpl = _dereq_(25);
 var StringDecoder;
 
 util.inherits(Readable, Stream);
 
+var kProxyEvents = ['error', 'close', 'destroy', 'pause', 'resume'];
+
 function prependListener(emitter, event, fn) {
   // Sadly this is not cacheable as some libraries bundle their own
   // event emitter implementation with them.
-  if (typeof emitter.prependListener === 'function') {
-    return emitter.prependListener(event, fn);
-  } else {
-    // This is a hack to make sure that our error handler is attached before any
-    // userland ones.  NEVER DO THIS. This is here only because this code needs
-    // to continue to work with older versions of Node.js that do not include
-    // the prependListener() method. The goal is to eventually remove this hack.
-    if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);else emitter._events[event] = [fn, emitter._events[event]];
-  }
+  if (typeof emitter.prependListener === 'function') return emitter.prependListener(event, fn);
+
+  // This is a hack to make sure that our error handler is attached before any
+  // userland ones.  NEVER DO THIS. This is here only because this code needs
+  // to continue to work with older versions of Node.js that do not include
+  // the prependListener() method. The goal is to eventually remove this hack.
+  if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);else emitter._events[event] = [fn, emitter._events[event]];
 }
 
 function ReadableState(options, stream) {
-  Duplex = Duplex || _dereq_(17);
+  Duplex = Duplex || _dereq_(19);
 
   options = options || {};
+
+  // Duplex streams are both readable and writable, but share
+  // the same options object.
+  // However, some cases require setting options to different
+  // values for the readable and the writable sides of the duplex stream.
+  // These options can be provided separately as readableXXX and writableXXX.
+  var isDuplex = stream instanceof Duplex;
 
   // object stream flag. Used to make read(n) ignore n and to
   // make all the buffer merging and length checks go away
   this.objectMode = !!options.objectMode;
 
-  if (stream instanceof Duplex) this.objectMode = this.objectMode || !!options.readableObjectMode;
+  if (isDuplex) this.objectMode = this.objectMode || !!options.readableObjectMode;
 
   // the point at which it stops calling _read() to fill the buffer
   // Note: 0 is a valid value, means "don't call _read preemptively ever"
   var hwm = options.highWaterMark;
+  var readableHwm = options.readableHighWaterMark;
   var defaultHwm = this.objectMode ? 16 : 16 * 1024;
-  this.highWaterMark = hwm || hwm === 0 ? hwm : defaultHwm;
+
+  if (hwm || hwm === 0) this.highWaterMark = hwm;else if (isDuplex && (readableHwm || readableHwm === 0)) this.highWaterMark = readableHwm;else this.highWaterMark = defaultHwm;
 
   // cast to ints.
-  this.highWaterMark = ~~this.highWaterMark;
+  this.highWaterMark = Math.floor(this.highWaterMark);
 
   // A linked list is used to store data chunks instead of an array because the
   // linked list can remove elements from the beginning faster than
@@ -5773,10 +6048,10 @@ function ReadableState(options, stream) {
   this.endEmitted = false;
   this.reading = false;
 
-  // a flag to be able to tell if the onwrite cb is called immediately,
-  // or on a later tick.  We set this to true at first, because any
-  // actions that shouldn't happen until "later" should generally also
-  // not happen before the first write call.
+  // a flag to be able to tell if the event 'readable'/'data' is emitted
+  // immediately, or on a later tick.  We set this to true at first, because
+  // any actions that shouldn't happen until "later" should generally also
+  // not happen before the first read call.
   this.sync = true;
 
   // whenever we return null, then we set a flag to say
@@ -5786,14 +6061,13 @@ function ReadableState(options, stream) {
   this.readableListening = false;
   this.resumeScheduled = false;
 
+  // has it been destroyed
+  this.destroyed = false;
+
   // Crypto is kind of old and crusty.  Historically, its default string
   // encoding is 'binary' so we have to make this configurable.
   // Everything else in the universe uses 'utf8', though.
   this.defaultEncoding = options.defaultEncoding || 'utf8';
-
-  // when piping, we only care about 'readable' events that happen
-  // after read()ing all the bytes and not getting any pushback.
-  this.ranOut = false;
 
   // the number of writers that are awaiting a drain event in .pipe()s
   this.awaitDrain = 0;
@@ -5804,14 +6078,14 @@ function ReadableState(options, stream) {
   this.decoder = null;
   this.encoding = null;
   if (options.encoding) {
-    if (!StringDecoder) StringDecoder = _dereq_(33).StringDecoder;
+    if (!StringDecoder) StringDecoder = _dereq_(28).StringDecoder;
     this.decoder = new StringDecoder(options.encoding);
     this.encoding = options.encoding;
   }
 }
 
 function Readable(options) {
-  Duplex = Duplex || _dereq_(17);
+  Duplex = Duplex || _dereq_(19);
 
   if (!(this instanceof Readable)) return new Readable(options);
 
@@ -5820,10 +6094,41 @@ function Readable(options) {
   // legacy
   this.readable = true;
 
-  if (options && typeof options.read === 'function') this._read = options.read;
+  if (options) {
+    if (typeof options.read === 'function') this._read = options.read;
+
+    if (typeof options.destroy === 'function') this._destroy = options.destroy;
+  }
 
   Stream.call(this);
 }
+
+Object.defineProperty(Readable.prototype, 'destroyed', {
+  get: function () {
+    if (this._readableState === undefined) {
+      return false;
+    }
+    return this._readableState.destroyed;
+  },
+  set: function (value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (!this._readableState) {
+      return;
+    }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._readableState.destroyed = value;
+  }
+});
+
+Readable.prototype.destroy = destroyImpl.destroy;
+Readable.prototype._undestroy = destroyImpl.undestroy;
+Readable.prototype._destroy = function (err, cb) {
+  this.push(null);
+  cb(err);
+};
 
 // Manually shove something into the read() buffer.
 // This returns true if the highWaterMark has not been hit yet,
@@ -5831,74 +6136,85 @@ function Readable(options) {
 // write() some more.
 Readable.prototype.push = function (chunk, encoding) {
   var state = this._readableState;
+  var skipChunkCheck;
 
-  if (!state.objectMode && typeof chunk === 'string') {
-    encoding = encoding || state.defaultEncoding;
-    if (encoding !== state.encoding) {
-      chunk = bufferShim.from(chunk, encoding);
-      encoding = '';
+  if (!state.objectMode) {
+    if (typeof chunk === 'string') {
+      encoding = encoding || state.defaultEncoding;
+      if (encoding !== state.encoding) {
+        chunk = Buffer.from(chunk, encoding);
+        encoding = '';
+      }
+      skipChunkCheck = true;
     }
+  } else {
+    skipChunkCheck = true;
   }
 
-  return readableAddChunk(this, state, chunk, encoding, false);
+  return readableAddChunk(this, chunk, encoding, false, skipChunkCheck);
 };
 
 // Unshift should *always* be something directly out of read()
 Readable.prototype.unshift = function (chunk) {
-  var state = this._readableState;
-  return readableAddChunk(this, state, chunk, '', true);
+  return readableAddChunk(this, chunk, null, true, false);
 };
 
-Readable.prototype.isPaused = function () {
-  return this._readableState.flowing === false;
-};
-
-function readableAddChunk(stream, state, chunk, encoding, addToFront) {
-  var er = chunkInvalid(state, chunk);
-  if (er) {
-    stream.emit('error', er);
-  } else if (chunk === null) {
+function readableAddChunk(stream, chunk, encoding, addToFront, skipChunkCheck) {
+  var state = stream._readableState;
+  if (chunk === null) {
     state.reading = false;
     onEofChunk(stream, state);
-  } else if (state.objectMode || chunk && chunk.length > 0) {
-    if (state.ended && !addToFront) {
-      var e = new Error('stream.push() after EOF');
-      stream.emit('error', e);
-    } else if (state.endEmitted && addToFront) {
-      var _e = new Error('stream.unshift() after end event');
-      stream.emit('error', _e);
-    } else {
-      var skipAdd;
-      if (state.decoder && !addToFront && !encoding) {
-        chunk = state.decoder.write(chunk);
-        skipAdd = !state.objectMode && chunk.length === 0;
+  } else {
+    var er;
+    if (!skipChunkCheck) er = chunkInvalid(state, chunk);
+    if (er) {
+      stream.emit('error', er);
+    } else if (state.objectMode || chunk && chunk.length > 0) {
+      if (typeof chunk !== 'string' && !state.objectMode && Object.getPrototypeOf(chunk) !== Buffer.prototype) {
+        chunk = _uint8ArrayToBuffer(chunk);
       }
 
-      if (!addToFront) state.reading = false;
-
-      // Don't add to the buffer if we've decoded to an empty string chunk and
-      // we're not in object mode
-      if (!skipAdd) {
-        // if we want the data now, just emit it.
-        if (state.flowing && state.length === 0 && !state.sync) {
-          stream.emit('data', chunk);
-          stream.read(0);
+      if (addToFront) {
+        if (state.endEmitted) stream.emit('error', new Error('stream.unshift() after end event'));else addChunk(stream, state, chunk, true);
+      } else if (state.ended) {
+        stream.emit('error', new Error('stream.push() after EOF'));
+      } else {
+        state.reading = false;
+        if (state.decoder && !encoding) {
+          chunk = state.decoder.write(chunk);
+          if (state.objectMode || chunk.length !== 0) addChunk(stream, state, chunk, false);else maybeReadMore(stream, state);
         } else {
-          // update the buffer info.
-          state.length += state.objectMode ? 1 : chunk.length;
-          if (addToFront) state.buffer.unshift(chunk);else state.buffer.push(chunk);
-
-          if (state.needReadable) emitReadable(stream);
+          addChunk(stream, state, chunk, false);
         }
       }
-
-      maybeReadMore(stream, state);
+    } else if (!addToFront) {
+      state.reading = false;
     }
-  } else if (!addToFront) {
-    state.reading = false;
   }
 
   return needMoreData(state);
+}
+
+function addChunk(stream, state, chunk, addToFront) {
+  if (state.flowing && state.length === 0 && !state.sync) {
+    stream.emit('data', chunk);
+    stream.read(0);
+  } else {
+    // update the buffer info.
+    state.length += state.objectMode ? 1 : chunk.length;
+    if (addToFront) state.buffer.unshift(chunk);else state.buffer.push(chunk);
+
+    if (state.needReadable) emitReadable(stream);
+  }
+  maybeReadMore(stream, state);
+}
+
+function chunkInvalid(state, chunk) {
+  var er;
+  if (!_isUint8Array(chunk) && typeof chunk !== 'string' && chunk !== undefined && !state.objectMode) {
+    er = new TypeError('Invalid non-string/buffer chunk');
+  }
+  return er;
 }
 
 // if it's past the high water mark, we can push in some more.
@@ -5912,9 +6228,13 @@ function needMoreData(state) {
   return !state.ended && (state.needReadable || state.length < state.highWaterMark || state.length === 0);
 }
 
+Readable.prototype.isPaused = function () {
+  return this._readableState.flowing === false;
+};
+
 // backwards compatibility.
 Readable.prototype.setEncoding = function (enc) {
-  if (!StringDecoder) StringDecoder = _dereq_(33).StringDecoder;
+  if (!StringDecoder) StringDecoder = _dereq_(28).StringDecoder;
   this._readableState.decoder = new StringDecoder(enc);
   this._readableState.encoding = enc;
   return this;
@@ -6060,14 +6380,6 @@ Readable.prototype.read = function (n) {
   return ret;
 };
 
-function chunkInvalid(state, chunk) {
-  var er = null;
-  if (!Buffer.isBuffer(chunk) && typeof chunk !== 'string' && chunk !== null && chunk !== undefined && !state.objectMode) {
-    er = new TypeError('Invalid non-string/buffer chunk');
-  }
-  return er;
-}
-
 function onEofChunk(stream, state) {
   if (state.ended) return;
   if (state.decoder) {
@@ -6092,7 +6404,7 @@ function emitReadable(stream) {
   if (!state.emittedReadable) {
     debug('emitReadable', state.flowing);
     state.emittedReadable = true;
-    if (state.sync) processNextTick(emitReadable_, stream);else emitReadable_(stream);
+    if (state.sync) pna.nextTick(emitReadable_, stream);else emitReadable_(stream);
   }
 }
 
@@ -6111,7 +6423,7 @@ function emitReadable_(stream) {
 function maybeReadMore(stream, state) {
   if (!state.readingMore) {
     state.readingMore = true;
-    processNextTick(maybeReadMore_, stream, state);
+    pna.nextTick(maybeReadMore_, stream, state);
   }
 }
 
@@ -6155,14 +6467,17 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
 
   var doEnd = (!pipeOpts || pipeOpts.end !== false) && dest !== process.stdout && dest !== process.stderr;
 
-  var endFn = doEnd ? onend : cleanup;
-  if (state.endEmitted) processNextTick(endFn);else src.once('end', endFn);
+  var endFn = doEnd ? onend : unpipe;
+  if (state.endEmitted) pna.nextTick(endFn);else src.once('end', endFn);
 
   dest.on('unpipe', onunpipe);
-  function onunpipe(readable) {
+  function onunpipe(readable, unpipeInfo) {
     debug('onunpipe');
     if (readable === src) {
-      cleanup();
+      if (unpipeInfo && unpipeInfo.hasUnpiped === false) {
+        unpipeInfo.hasUnpiped = true;
+        cleanup();
+      }
     }
   }
 
@@ -6188,7 +6503,7 @@ Readable.prototype.pipe = function (dest, pipeOpts) {
     dest.removeListener('error', onerror);
     dest.removeListener('unpipe', onunpipe);
     src.removeListener('end', onend);
-    src.removeListener('end', cleanup);
+    src.removeListener('end', unpipe);
     src.removeListener('data', ondata);
 
     cleanedUp = true;
@@ -6281,6 +6596,7 @@ function pipeOnDrain(src) {
 
 Readable.prototype.unpipe = function (dest) {
   var state = this._readableState;
+  var unpipeInfo = { hasUnpiped: false };
 
   // if we're not piping anywhere, then do nothing.
   if (state.pipesCount === 0) return this;
@@ -6296,7 +6612,7 @@ Readable.prototype.unpipe = function (dest) {
     state.pipes = null;
     state.pipesCount = 0;
     state.flowing = false;
-    if (dest) dest.emit('unpipe', this);
+    if (dest) dest.emit('unpipe', this, unpipeInfo);
     return this;
   }
 
@@ -6311,7 +6627,7 @@ Readable.prototype.unpipe = function (dest) {
     state.flowing = false;
 
     for (var i = 0; i < len; i++) {
-      dests[i].emit('unpipe', this);
+      dests[i].emit('unpipe', this, unpipeInfo);
     }return this;
   }
 
@@ -6323,7 +6639,7 @@ Readable.prototype.unpipe = function (dest) {
   state.pipesCount -= 1;
   if (state.pipesCount === 1) state.pipes = state.pipes[0];
 
-  dest.emit('unpipe', this);
+  dest.emit('unpipe', this, unpipeInfo);
 
   return this;
 };
@@ -6342,9 +6658,9 @@ Readable.prototype.on = function (ev, fn) {
       state.readableListening = state.needReadable = true;
       state.emittedReadable = false;
       if (!state.reading) {
-        processNextTick(nReadingNextTick, this);
+        pna.nextTick(nReadingNextTick, this);
       } else if (state.length) {
-        emitReadable(this, state);
+        emitReadable(this);
       }
     }
   }
@@ -6373,7 +6689,7 @@ Readable.prototype.resume = function () {
 function resume(stream, state) {
   if (!state.resumeScheduled) {
     state.resumeScheduled = true;
-    processNextTick(resume_, stream, state);
+    pna.nextTick(resume_, stream, state);
   }
 }
 
@@ -6410,18 +6726,19 @@ function flow(stream) {
 // This is *not* part of the readable stream interface.
 // It is an ugly unfortunate mess of history.
 Readable.prototype.wrap = function (stream) {
+  var _this = this;
+
   var state = this._readableState;
   var paused = false;
 
-  var self = this;
   stream.on('end', function () {
     debug('wrapped end');
     if (state.decoder && !state.ended) {
       var chunk = state.decoder.end();
-      if (chunk && chunk.length) self.push(chunk);
+      if (chunk && chunk.length) _this.push(chunk);
     }
 
-    self.push(null);
+    _this.push(null);
   });
 
   stream.on('data', function (chunk) {
@@ -6431,7 +6748,7 @@ Readable.prototype.wrap = function (stream) {
     // don't skip over falsy values in objectMode
     if (state.objectMode && (chunk === null || chunk === undefined)) return;else if (!state.objectMode && (!chunk || !chunk.length)) return;
 
-    var ret = self.push(chunk);
+    var ret = _this.push(chunk);
     if (!ret) {
       paused = true;
       stream.pause();
@@ -6451,14 +6768,13 @@ Readable.prototype.wrap = function (stream) {
   }
 
   // proxy certain important events.
-  var events = ['error', 'close', 'destroy', 'pause', 'resume'];
-  forEach(events, function (ev) {
-    stream.on(ev, self.emit.bind(self, ev));
-  });
+  for (var n = 0; n < kProxyEvents.length; n++) {
+    stream.on(kProxyEvents[n], this.emit.bind(this, kProxyEvents[n]));
+  }
 
   // when we try to consume some more bytes, simply unpause the
   // underlying stream.
-  self._read = function (n) {
+  this._read = function (n) {
     debug('wrapped _read', n);
     if (paused) {
       paused = false;
@@ -6466,8 +6782,18 @@ Readable.prototype.wrap = function (stream) {
     }
   };
 
-  return self;
+  return this;
 };
+
+Object.defineProperty(Readable.prototype, 'readableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function () {
+    return this._readableState.highWaterMark;
+  }
+});
 
 // exposed for testing purposes only.
 Readable._fromList = fromList;
@@ -6546,7 +6872,7 @@ function copyFromBufferString(n, list) {
 // This function is designed to be inlinable, so please take care when making
 // changes to the function body.
 function copyFromBuffer(n, list) {
-  var ret = bufferShim.allocUnsafe(n);
+  var ret = Buffer.allocUnsafe(n);
   var p = list.head;
   var c = 1;
   p.data.copy(ret);
@@ -6581,7 +6907,7 @@ function endReadable(stream) {
 
   if (!state.endEmitted) {
     state.ended = true;
-    processNextTick(endReadableNT, state, stream);
+    pna.nextTick(endReadableNT, state, stream);
   }
 }
 
@@ -6594,21 +6920,36 @@ function endReadableNT(state, stream) {
   }
 }
 
-function forEach(xs, f) {
-  for (var i = 0, l = xs.length; i < l; i++) {
-    f(xs[i], i);
-  }
-}
-
 function indexOf(xs, x) {
   for (var i = 0, l = xs.length; i < l; i++) {
     if (xs[i] === x) return i;
   }
   return -1;
 }
-}).call(this,_dereq_(15))
+}).call(this,_dereq_(17),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 
-},{"12":12,"13":13,"15":15,"17":17,"22":22,"23":23,"24":24,"25":25,"26":26,"33":33,"7":7,"8":8}],20:[function(_dereq_,module,exports){
+},{"11":11,"12":12,"14":14,"16":16,"17":17,"19":19,"24":24,"25":25,"26":26,"27":27,"28":28,"33":33,"8":8}],22:[function(_dereq_,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 // a transform stream is a readable/writable stream where you do
 // something with the data.  Sometimes it's called a "filter",
 // but that's not a great name for it, since that implies a thing where
@@ -6655,46 +6996,37 @@ function indexOf(xs, x) {
 
 module.exports = Transform;
 
-var Duplex = _dereq_(17);
+var Duplex = _dereq_(19);
 
 /*<replacement>*/
-var util = _dereq_(24);
-util.inherits = _dereq_(13);
+var util = _dereq_(11);
+util.inherits = _dereq_(14);
 /*</replacement>*/
 
 util.inherits(Transform, Duplex);
 
-function TransformState(stream) {
-  this.afterTransform = function (er, data) {
-    return afterTransform(stream, er, data);
-  };
-
-  this.needTransform = false;
-  this.transforming = false;
-  this.writecb = null;
-  this.writechunk = null;
-  this.writeencoding = null;
-}
-
-function afterTransform(stream, er, data) {
-  var ts = stream._transformState;
+function afterTransform(er, data) {
+  var ts = this._transformState;
   ts.transforming = false;
 
   var cb = ts.writecb;
 
-  if (!cb) return stream.emit('error', new Error('no writecb in Transform class'));
+  if (!cb) {
+    return this.emit('error', new Error('write callback called multiple times'));
+  }
 
   ts.writechunk = null;
   ts.writecb = null;
 
-  if (data !== null && data !== undefined) stream.push(data);
+  if (data != null) // single equals check for both `null` and `undefined`
+    this.push(data);
 
   cb(er);
 
-  var rs = stream._readableState;
+  var rs = this._readableState;
   rs.reading = false;
   if (rs.needReadable || rs.length < rs.highWaterMark) {
-    stream._read(rs.highWaterMark);
+    this._read(rs.highWaterMark);
   }
 }
 
@@ -6703,9 +7035,14 @@ function Transform(options) {
 
   Duplex.call(this, options);
 
-  this._transformState = new TransformState(this);
-
-  var stream = this;
+  this._transformState = {
+    afterTransform: afterTransform.bind(this),
+    needTransform: false,
+    transforming: false,
+    writecb: null,
+    writechunk: null,
+    writeencoding: null
+  };
 
   // start out asking for a readable event once data is transformed.
   this._readableState.needReadable = true;
@@ -6722,11 +7059,19 @@ function Transform(options) {
   }
 
   // When the writable side finishes, then flush out anything remaining.
-  this.once('prefinish', function () {
-    if (typeof this._flush === 'function') this._flush(function (er, data) {
-      done(stream, er, data);
-    });else done(stream);
-  });
+  this.on('prefinish', prefinish);
+}
+
+function prefinish() {
+  var _this = this;
+
+  if (typeof this._flush === 'function') {
+    this._flush(function (er, data) {
+      done(_this, er, data);
+    });
+  } else {
+    done(this, null, null);
+  }
 }
 
 Transform.prototype.push = function (chunk, encoding) {
@@ -6775,38 +7120,88 @@ Transform.prototype._read = function (n) {
   }
 };
 
+Transform.prototype._destroy = function (err, cb) {
+  var _this2 = this;
+
+  Duplex.prototype._destroy.call(this, err, function (err2) {
+    cb(err2);
+    _this2.emit('close');
+  });
+};
+
 function done(stream, er, data) {
   if (er) return stream.emit('error', er);
 
-  if (data !== null && data !== undefined) stream.push(data);
+  if (data != null) // single equals check for both `null` and `undefined`
+    stream.push(data);
 
   // if there's nothing in the write buffer, then that means
   // that nothing more will ever be provided
-  var ws = stream._writableState;
-  var ts = stream._transformState;
+  if (stream._writableState.length) throw new Error('Calling transform done when ws.length != 0');
 
-  if (ws.length) throw new Error('Calling transform done when ws.length != 0');
-
-  if (ts.transforming) throw new Error('Calling transform done when still transforming');
+  if (stream._transformState.transforming) throw new Error('Calling transform done when still transforming');
 
   return stream.push(null);
 }
-},{"13":13,"17":17,"24":24}],21:[function(_dereq_,module,exports){
-(function (process){
+},{"11":11,"14":14,"19":19}],23:[function(_dereq_,module,exports){
+(function (process,global){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 // A bit simpler than readable streams.
 // Implement an async ._write(chunk, encoding, cb), and it'll handle all
 // the drain event emission and buffering.
 
 'use strict';
 
-module.exports = Writable;
-
 /*<replacement>*/
-var processNextTick = _dereq_(26);
+
+var pna = _dereq_(16);
 /*</replacement>*/
 
+module.exports = Writable;
+
+/* <replacement> */
+function WriteReq(chunk, encoding, cb) {
+  this.chunk = chunk;
+  this.encoding = encoding;
+  this.callback = cb;
+  this.next = null;
+}
+
+// It seems a linked list but it is not
+// there will be only 2 of these for each stream
+function CorkedRequest(state) {
+  var _this = this;
+
+  this.next = null;
+  this.entry = null;
+  this.finish = function () {
+    onCorkedFinish(_this, state);
+  };
+}
+/* </replacement> */
+
 /*<replacement>*/
-var asyncWrite = !process.browser && ['v0.10', 'v0.9.'].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : processNextTick;
+var asyncWrite = !process.browser && ['v0.10', 'v0.9.'].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : pna.nextTick;
 /*</replacement>*/
 
 /*<replacement>*/
@@ -6816,63 +7211,71 @@ var Duplex;
 Writable.WritableState = WritableState;
 
 /*<replacement>*/
-var util = _dereq_(24);
-util.inherits = _dereq_(13);
+var util = _dereq_(11);
+util.inherits = _dereq_(14);
 /*</replacement>*/
 
 /*<replacement>*/
 var internalUtil = {
-  deprecate: _dereq_(27)
+  deprecate: _dereq_(36)
 };
 /*</replacement>*/
 
 /*<replacement>*/
-var Stream;
-(function () {
-  try {
-    Stream = _dereq_('st' + 'ream');
-  } catch (_) {} finally {
-    if (!Stream) Stream = _dereq_(12).EventEmitter;
-  }
-})();
+var Stream = _dereq_(26);
 /*</replacement>*/
 
-var Buffer = _dereq_(8).Buffer;
 /*<replacement>*/
-var bufferShim = _dereq_(23);
+
+var Buffer = _dereq_(33).Buffer;
+var OurUint8Array = global.Uint8Array || function () {};
+function _uint8ArrayToBuffer(chunk) {
+  return Buffer.from(chunk);
+}
+function _isUint8Array(obj) {
+  return Buffer.isBuffer(obj) || obj instanceof OurUint8Array;
+}
+
 /*</replacement>*/
+
+var destroyImpl = _dereq_(25);
 
 util.inherits(Writable, Stream);
 
 function nop() {}
 
-function WriteReq(chunk, encoding, cb) {
-  this.chunk = chunk;
-  this.encoding = encoding;
-  this.callback = cb;
-  this.next = null;
-}
-
 function WritableState(options, stream) {
-  Duplex = Duplex || _dereq_(17);
+  Duplex = Duplex || _dereq_(19);
 
   options = options || {};
+
+  // Duplex streams are both readable and writable, but share
+  // the same options object.
+  // However, some cases require setting options to different
+  // values for the readable and the writable sides of the duplex stream.
+  // These options can be provided separately as readableXXX and writableXXX.
+  var isDuplex = stream instanceof Duplex;
 
   // object stream flag to indicate whether or not this stream
   // contains buffers or objects.
   this.objectMode = !!options.objectMode;
 
-  if (stream instanceof Duplex) this.objectMode = this.objectMode || !!options.writableObjectMode;
+  if (isDuplex) this.objectMode = this.objectMode || !!options.writableObjectMode;
 
   // the point at which write() starts returning false
   // Note: 0 is a valid value, means that we always return false if
   // the entire buffer is not flushed immediately on write()
   var hwm = options.highWaterMark;
+  var writableHwm = options.writableHighWaterMark;
   var defaultHwm = this.objectMode ? 16 : 16 * 1024;
-  this.highWaterMark = hwm || hwm === 0 ? hwm : defaultHwm;
+
+  if (hwm || hwm === 0) this.highWaterMark = hwm;else if (isDuplex && (writableHwm || writableHwm === 0)) this.highWaterMark = writableHwm;else this.highWaterMark = defaultHwm;
 
   // cast to ints.
-  this.highWaterMark = ~~this.highWaterMark;
+  this.highWaterMark = Math.floor(this.highWaterMark);
+
+  // if _final has been called
+  this.finalCalled = false;
 
   // drain event flag.
   this.needDrain = false;
@@ -6882,6 +7285,9 @@ function WritableState(options, stream) {
   this.ended = false;
   // when 'finish' is emitted
   this.finished = false;
+
+  // has it been destroyed
+  this.destroyed = false;
 
   // should we decode strings into buffers before passing to _write?
   // this is here so that some node-core streams can optimize string
@@ -6964,7 +7370,7 @@ WritableState.prototype.getBuffer = function getBuffer() {
     Object.defineProperty(WritableState.prototype, 'buffer', {
       get: internalUtil.deprecate(function () {
         return this.getBuffer();
-      }, '_writableState.buffer is deprecated. Use _writableState.getBuffer ' + 'instead.')
+      }, '_writableState.buffer is deprecated. Use _writableState.getBuffer ' + 'instead.', 'DEP0003')
     });
   } catch (_) {}
 })();
@@ -6977,6 +7383,7 @@ if (typeof Symbol === 'function' && Symbol.hasInstance && typeof Function.protot
   Object.defineProperty(Writable, Symbol.hasInstance, {
     value: function (object) {
       if (realHasInstance.call(this, object)) return true;
+      if (this !== Writable) return false;
 
       return object && object._writableState instanceof WritableState;
     }
@@ -6988,7 +7395,7 @@ if (typeof Symbol === 'function' && Symbol.hasInstance && typeof Function.protot
 }
 
 function Writable(options) {
-  Duplex = Duplex || _dereq_(17);
+  Duplex = Duplex || _dereq_(19);
 
   // Writable ctor is applied to Duplexes, too.
   // `realHasInstance` is necessary because using plain `instanceof`
@@ -7010,6 +7417,10 @@ function Writable(options) {
     if (typeof options.write === 'function') this._write = options.write;
 
     if (typeof options.writev === 'function') this._writev = options.writev;
+
+    if (typeof options.destroy === 'function') this._destroy = options.destroy;
+
+    if (typeof options.final === 'function') this._final = options.final;
   }
 
   Stream.call(this);
@@ -7024,7 +7435,7 @@ function writeAfterEnd(stream, cb) {
   var er = new Error('write after end');
   // TODO: defer error events consistently everywhere, not just the cb
   stream.emit('error', er);
-  processNextTick(cb, er);
+  pna.nextTick(cb, er);
 }
 
 // Checks that a user-supplied chunk is valid, especially for the particular
@@ -7041,7 +7452,7 @@ function validChunk(stream, state, chunk, cb) {
   }
   if (er) {
     stream.emit('error', er);
-    processNextTick(cb, er);
+    pna.nextTick(cb, er);
     valid = false;
   }
   return valid;
@@ -7050,7 +7461,11 @@ function validChunk(stream, state, chunk, cb) {
 Writable.prototype.write = function (chunk, encoding, cb) {
   var state = this._writableState;
   var ret = false;
-  var isBuf = Buffer.isBuffer(chunk);
+  var isBuf = !state.objectMode && _isUint8Array(chunk);
+
+  if (isBuf && !Buffer.isBuffer(chunk)) {
+    chunk = _uint8ArrayToBuffer(chunk);
+  }
 
   if (typeof encoding === 'function') {
     cb = encoding;
@@ -7095,18 +7510,32 @@ Writable.prototype.setDefaultEncoding = function setDefaultEncoding(encoding) {
 
 function decodeChunk(state, chunk, encoding) {
   if (!state.objectMode && state.decodeStrings !== false && typeof chunk === 'string') {
-    chunk = bufferShim.from(chunk, encoding);
+    chunk = Buffer.from(chunk, encoding);
   }
   return chunk;
 }
+
+Object.defineProperty(Writable.prototype, 'writableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function () {
+    return this._writableState.highWaterMark;
+  }
+});
 
 // if we're already writing something, then just put this
 // in the queue, and wait our turn.  Otherwise, call _write
 // If we return false, then we need a drain event, so set that flag.
 function writeOrBuffer(stream, state, isBuf, chunk, encoding, cb) {
   if (!isBuf) {
-    chunk = decodeChunk(state, chunk, encoding);
-    if (Buffer.isBuffer(chunk)) encoding = 'buffer';
+    var newChunk = decodeChunk(state, chunk, encoding);
+    if (chunk !== newChunk) {
+      isBuf = true;
+      encoding = 'buffer';
+      chunk = newChunk;
+    }
   }
   var len = state.objectMode ? 1 : chunk.length;
 
@@ -7118,7 +7547,13 @@ function writeOrBuffer(stream, state, isBuf, chunk, encoding, cb) {
 
   if (state.writing || state.corked) {
     var last = state.lastBufferedRequest;
-    state.lastBufferedRequest = new WriteReq(chunk, encoding, cb);
+    state.lastBufferedRequest = {
+      chunk: chunk,
+      encoding: encoding,
+      isBuf: isBuf,
+      callback: cb,
+      next: null
+    };
     if (last) {
       last.next = state.lastBufferedRequest;
     } else {
@@ -7143,10 +7578,26 @@ function doWrite(stream, state, writev, len, chunk, encoding, cb) {
 
 function onwriteError(stream, state, sync, er, cb) {
   --state.pendingcb;
-  if (sync) processNextTick(cb, er);else cb(er);
 
-  stream._writableState.errorEmitted = true;
-  stream.emit('error', er);
+  if (sync) {
+    // defer the callback if we are being called synchronously
+    // to avoid piling up things on the stack
+    pna.nextTick(cb, er);
+    // this can emit finish, and it will always happen
+    // after error
+    pna.nextTick(finishMaybe, stream, state);
+    stream._writableState.errorEmitted = true;
+    stream.emit('error', er);
+  } else {
+    // the caller expect this to happen before if
+    // it is async
+    cb(er);
+    stream._writableState.errorEmitted = true;
+    stream.emit('error', er);
+    // this can emit finish, but finish must
+    // always follow error
+    finishMaybe(stream, state);
+  }
 }
 
 function onwriteStateUpdate(state) {
@@ -7211,11 +7662,14 @@ function clearBuffer(stream, state) {
     holder.entry = entry;
 
     var count = 0;
+    var allBuffers = true;
     while (entry) {
       buffer[count] = entry;
+      if (!entry.isBuf) allBuffers = false;
       entry = entry.next;
       count += 1;
     }
+    buffer.allBuffers = allBuffers;
 
     doWrite(stream, state, true, state.length, buffer, '', holder.finish);
 
@@ -7229,6 +7683,7 @@ function clearBuffer(stream, state) {
     } else {
       state.corkedRequestsFree = new CorkedRequest(state);
     }
+    state.bufferedRequestCount = 0;
   } else {
     // Slow case, write chunks one-by-one
     while (entry) {
@@ -7239,6 +7694,7 @@ function clearBuffer(stream, state) {
 
       doWrite(stream, state, false, len, chunk, encoding, cb);
       entry = entry.next;
+      state.bufferedRequestCount--;
       // if we didn't call the onwrite immediately, then
       // it means that we need to wait until it does.
       // also, that means that the chunk and cb are currently
@@ -7251,7 +7707,6 @@ function clearBuffer(stream, state) {
     if (entry === null) state.lastBufferedRequest = null;
   }
 
-  state.bufferedRequestCount = 0;
   state.bufferedRequest = entry;
   state.bufferProcessing = false;
 }
@@ -7289,23 +7744,37 @@ Writable.prototype.end = function (chunk, encoding, cb) {
 function needFinish(state) {
   return state.ending && state.length === 0 && state.bufferedRequest === null && !state.finished && !state.writing;
 }
-
-function prefinish(stream, state) {
-  if (!state.prefinished) {
+function callFinal(stream, state) {
+  stream._final(function (err) {
+    state.pendingcb--;
+    if (err) {
+      stream.emit('error', err);
+    }
     state.prefinished = true;
     stream.emit('prefinish');
+    finishMaybe(stream, state);
+  });
+}
+function prefinish(stream, state) {
+  if (!state.prefinished && !state.finalCalled) {
+    if (typeof stream._final === 'function') {
+      state.pendingcb++;
+      state.finalCalled = true;
+      pna.nextTick(callFinal, stream, state);
+    } else {
+      state.prefinished = true;
+      stream.emit('prefinish');
+    }
   }
 }
 
 function finishMaybe(stream, state) {
   var need = needFinish(state);
   if (need) {
+    prefinish(stream, state);
     if (state.pendingcb === 0) {
-      prefinish(stream, state);
       state.finished = true;
       stream.emit('finish');
-    } else {
-      prefinish(stream, state);
     }
   }
   return need;
@@ -7315,217 +7784,217 @@ function endWritable(stream, state, cb) {
   state.ending = true;
   finishMaybe(stream, state);
   if (cb) {
-    if (state.finished) processNextTick(cb);else stream.once('finish', cb);
+    if (state.finished) pna.nextTick(cb);else stream.once('finish', cb);
   }
   state.ended = true;
   stream.writable = false;
 }
 
-// It seems a linked list but it is not
-// there will be only 2 of these for each stream
-function CorkedRequest(state) {
-  var _this = this;
+function onCorkedFinish(corkReq, state, err) {
+  var entry = corkReq.entry;
+  corkReq.entry = null;
+  while (entry) {
+    var cb = entry.callback;
+    state.pendingcb--;
+    cb(err);
+    entry = entry.next;
+  }
+  if (state.corkedRequestsFree) {
+    state.corkedRequestsFree.next = corkReq;
+  } else {
+    state.corkedRequestsFree = corkReq;
+  }
+}
 
-  this.next = null;
-  this.entry = null;
-  this.finish = function (err) {
-    var entry = _this.entry;
-    _this.entry = null;
-    while (entry) {
-      var cb = entry.callback;
-      state.pendingcb--;
-      cb(err);
-      entry = entry.next;
+Object.defineProperty(Writable.prototype, 'destroyed', {
+  get: function () {
+    if (this._writableState === undefined) {
+      return false;
     }
-    if (state.corkedRequestsFree) {
-      state.corkedRequestsFree.next = _this;
-    } else {
-      state.corkedRequestsFree = _this;
+    return this._writableState.destroyed;
+  },
+  set: function (value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (!this._writableState) {
+      return;
     }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._writableState.destroyed = value;
+  }
+});
+
+Writable.prototype.destroy = destroyImpl.destroy;
+Writable.prototype._undestroy = destroyImpl.undestroy;
+Writable.prototype._destroy = function (err, cb) {
+  this.end();
+  cb(err);
+};
+}).call(this,_dereq_(17),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+
+},{"11":11,"14":14,"16":16,"17":17,"19":19,"25":25,"26":26,"33":33,"36":36}],24:[function(_dereq_,module,exports){
+'use strict';
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var Buffer = _dereq_(33).Buffer;
+var util = _dereq_(8);
+
+function copyBuffer(src, target, offset) {
+  src.copy(target, offset);
+}
+
+module.exports = function () {
+  function BufferList() {
+    _classCallCheck(this, BufferList);
+
+    this.head = null;
+    this.tail = null;
+    this.length = 0;
+  }
+
+  BufferList.prototype.push = function push(v) {
+    var entry = { data: v, next: null };
+    if (this.length > 0) this.tail.next = entry;else this.head = entry;
+    this.tail = entry;
+    ++this.length;
+  };
+
+  BufferList.prototype.unshift = function unshift(v) {
+    var entry = { data: v, next: this.head };
+    if (this.length === 0) this.tail = entry;
+    this.head = entry;
+    ++this.length;
+  };
+
+  BufferList.prototype.shift = function shift() {
+    if (this.length === 0) return;
+    var ret = this.head.data;
+    if (this.length === 1) this.head = this.tail = null;else this.head = this.head.next;
+    --this.length;
+    return ret;
+  };
+
+  BufferList.prototype.clear = function clear() {
+    this.head = this.tail = null;
+    this.length = 0;
+  };
+
+  BufferList.prototype.join = function join(s) {
+    if (this.length === 0) return '';
+    var p = this.head;
+    var ret = '' + p.data;
+    while (p = p.next) {
+      ret += s + p.data;
+    }return ret;
+  };
+
+  BufferList.prototype.concat = function concat(n) {
+    if (this.length === 0) return Buffer.alloc(0);
+    if (this.length === 1) return this.head.data;
+    var ret = Buffer.allocUnsafe(n >>> 0);
+    var p = this.head;
+    var i = 0;
+    while (p) {
+      copyBuffer(p.data, ret, i);
+      i += p.data.length;
+      p = p.next;
+    }
+    return ret;
+  };
+
+  return BufferList;
+}();
+
+if (util && util.inspect && util.inspect.custom) {
+  module.exports.prototype[util.inspect.custom] = function () {
+    var obj = util.inspect({ length: this.length });
+    return this.constructor.name + ' ' + obj;
   };
 }
-}).call(this,_dereq_(15))
-
-},{"12":12,"13":13,"15":15,"17":17,"23":23,"24":24,"26":26,"27":27,"8":8}],22:[function(_dereq_,module,exports){
+},{"33":33,"8":8}],25:[function(_dereq_,module,exports){
 'use strict';
 
-var Buffer = _dereq_(8).Buffer;
 /*<replacement>*/
-var bufferShim = _dereq_(23);
+
+var pna = _dereq_(16);
 /*</replacement>*/
 
-module.exports = BufferList;
+// undocumented cb() API, needed for core, not for public API
+function destroy(err, cb) {
+  var _this = this;
 
-function BufferList() {
-  this.head = null;
-  this.tail = null;
-  this.length = 0;
+  var readableDestroyed = this._readableState && this._readableState.destroyed;
+  var writableDestroyed = this._writableState && this._writableState.destroyed;
+
+  if (readableDestroyed || writableDestroyed) {
+    if (cb) {
+      cb(err);
+    } else if (err && (!this._writableState || !this._writableState.errorEmitted)) {
+      pna.nextTick(emitErrorNT, this, err);
+    }
+    return this;
+  }
+
+  // we set destroyed to true before firing error callbacks in order
+  // to make it re-entrance safe in case destroy() is called within callbacks
+
+  if (this._readableState) {
+    this._readableState.destroyed = true;
+  }
+
+  // if this is a duplex stream mark the writable part as destroyed as well
+  if (this._writableState) {
+    this._writableState.destroyed = true;
+  }
+
+  this._destroy(err || null, function (err) {
+    if (!cb && err) {
+      pna.nextTick(emitErrorNT, _this, err);
+      if (_this._writableState) {
+        _this._writableState.errorEmitted = true;
+      }
+    } else if (cb) {
+      cb(err);
+    }
+  });
+
+  return this;
 }
 
-BufferList.prototype.push = function (v) {
-  var entry = { data: v, next: null };
-  if (this.length > 0) this.tail.next = entry;else this.head = entry;
-  this.tail = entry;
-  ++this.length;
-};
-
-BufferList.prototype.unshift = function (v) {
-  var entry = { data: v, next: this.head };
-  if (this.length === 0) this.tail = entry;
-  this.head = entry;
-  ++this.length;
-};
-
-BufferList.prototype.shift = function () {
-  if (this.length === 0) return;
-  var ret = this.head.data;
-  if (this.length === 1) this.head = this.tail = null;else this.head = this.head.next;
-  --this.length;
-  return ret;
-};
-
-BufferList.prototype.clear = function () {
-  this.head = this.tail = null;
-  this.length = 0;
-};
-
-BufferList.prototype.join = function (s) {
-  if (this.length === 0) return '';
-  var p = this.head;
-  var ret = '' + p.data;
-  while (p = p.next) {
-    ret += s + p.data;
-  }return ret;
-};
-
-BufferList.prototype.concat = function (n) {
-  if (this.length === 0) return bufferShim.alloc(0);
-  if (this.length === 1) return this.head.data;
-  var ret = bufferShim.allocUnsafe(n >>> 0);
-  var p = this.head;
-  var i = 0;
-  while (p) {
-    p.data.copy(ret, i);
-    i += p.data.length;
-    p = p.next;
-  }
-  return ret;
-};
-},{"23":23,"8":8}],23:[function(_dereq_,module,exports){
-(function (global){
-'use strict';
-
-var buffer = _dereq_(8);
-var Buffer = buffer.Buffer;
-var SlowBuffer = buffer.SlowBuffer;
-var MAX_LEN = buffer.kMaxLength || 2147483647;
-exports.alloc = function alloc(size, fill, encoding) {
-  if (typeof Buffer.alloc === 'function') {
-    return Buffer.alloc(size, fill, encoding);
-  }
-  if (typeof encoding === 'number') {
-    throw new TypeError('encoding must not be number');
-  }
-  if (typeof size !== 'number') {
-    throw new TypeError('size must be a number');
-  }
-  if (size > MAX_LEN) {
-    throw new RangeError('size is too large');
-  }
-  var enc = encoding;
-  var _fill = fill;
-  if (_fill === undefined) {
-    enc = undefined;
-    _fill = 0;
-  }
-  var buf = new Buffer(size);
-  if (typeof _fill === 'string') {
-    var fillBuf = new Buffer(_fill, enc);
-    var flen = fillBuf.length;
-    var i = -1;
-    while (++i < size) {
-      buf[i] = fillBuf[i % flen];
-    }
-  } else {
-    buf.fill(_fill);
-  }
-  return buf;
-}
-exports.allocUnsafe = function allocUnsafe(size) {
-  if (typeof Buffer.allocUnsafe === 'function') {
-    return Buffer.allocUnsafe(size);
-  }
-  if (typeof size !== 'number') {
-    throw new TypeError('size must be a number');
-  }
-  if (size > MAX_LEN) {
-    throw new RangeError('size is too large');
-  }
-  return new Buffer(size);
-}
-exports.from = function from(value, encodingOrOffset, length) {
-  if (typeof Buffer.from === 'function' && (!global.Uint8Array || Uint8Array.from !== Buffer.from)) {
-    return Buffer.from(value, encodingOrOffset, length);
-  }
-  if (typeof value === 'number') {
-    throw new TypeError('"value" argument must not be a number');
-  }
-  if (typeof value === 'string') {
-    return new Buffer(value, encodingOrOffset);
-  }
-  if (typeof ArrayBuffer !== 'undefined' && value instanceof ArrayBuffer) {
-    var offset = encodingOrOffset;
-    if (arguments.length === 1) {
-      return new Buffer(value);
-    }
-    if (typeof offset === 'undefined') {
-      offset = 0;
-    }
-    var len = length;
-    if (typeof len === 'undefined') {
-      len = value.byteLength - offset;
-    }
-    if (offset >= value.byteLength) {
-      throw new RangeError('\'offset\' is out of bounds');
-    }
-    if (len > value.byteLength - offset) {
-      throw new RangeError('\'length\' is out of bounds');
-    }
-    return new Buffer(value.slice(offset, offset + len));
-  }
-  if (Buffer.isBuffer(value)) {
-    var out = new Buffer(value.length);
-    value.copy(out, 0, 0, value.length);
-    return out;
-  }
-  if (value) {
-    if (Array.isArray(value) || (typeof ArrayBuffer !== 'undefined' && value.buffer instanceof ArrayBuffer) || 'length' in value) {
-      return new Buffer(value);
-    }
-    if (value.type === 'Buffer' && Array.isArray(value.data)) {
-      return new Buffer(value.data);
-    }
+function undestroy() {
+  if (this._readableState) {
+    this._readableState.destroyed = false;
+    this._readableState.reading = false;
+    this._readableState.ended = false;
+    this._readableState.endEmitted = false;
   }
 
-  throw new TypeError('First argument must be a string, Buffer, ' + 'ArrayBuffer, Array, or array-like object.');
-}
-exports.allocUnsafeSlow = function allocUnsafeSlow(size) {
-  if (typeof Buffer.allocUnsafeSlow === 'function') {
-    return Buffer.allocUnsafeSlow(size);
+  if (this._writableState) {
+    this._writableState.destroyed = false;
+    this._writableState.ended = false;
+    this._writableState.ending = false;
+    this._writableState.finished = false;
+    this._writableState.errorEmitted = false;
   }
-  if (typeof size !== 'number') {
-    throw new TypeError('size must be a number');
-  }
-  if (size >= MAX_LEN) {
-    throw new RangeError('size is too large');
-  }
-  return new SlowBuffer(size);
 }
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+function emitErrorNT(self, err) {
+  self.emit('error', err);
+}
 
-},{"8":8}],24:[function(_dereq_,module,exports){
-(function (Buffer){
+module.exports = {
+  destroy: destroy,
+  undestroy: undestroy
+};
+},{"16":16}],26:[function(_dereq_,module,exports){
+module.exports = _dereq_(12).EventEmitter;
+
+},{"12":12}],27:[function(_dereq_,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"10":10}],28:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7547,248 +8016,364 @@ exports.allocUnsafeSlow = function allocUnsafeSlow(size) {
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// NOTE: These type checking functions intentionally don't use `instanceof`
-// because it is fragile and can be easily faked with `Object.create()`.
-
-function isArray(arg) {
-  if (Array.isArray) {
-    return Array.isArray(arg);
-  }
-  return objectToString(arg) === '[object Array]';
-}
-exports.isArray = isArray;
-
-function isBoolean(arg) {
-  return typeof arg === 'boolean';
-}
-exports.isBoolean = isBoolean;
-
-function isNull(arg) {
-  return arg === null;
-}
-exports.isNull = isNull;
-
-function isNullOrUndefined(arg) {
-  return arg == null;
-}
-exports.isNullOrUndefined = isNullOrUndefined;
-
-function isNumber(arg) {
-  return typeof arg === 'number';
-}
-exports.isNumber = isNumber;
-
-function isString(arg) {
-  return typeof arg === 'string';
-}
-exports.isString = isString;
-
-function isSymbol(arg) {
-  return typeof arg === 'symbol';
-}
-exports.isSymbol = isSymbol;
-
-function isUndefined(arg) {
-  return arg === void 0;
-}
-exports.isUndefined = isUndefined;
-
-function isRegExp(re) {
-  return objectToString(re) === '[object RegExp]';
-}
-exports.isRegExp = isRegExp;
-
-function isObject(arg) {
-  return typeof arg === 'object' && arg !== null;
-}
-exports.isObject = isObject;
-
-function isDate(d) {
-  return objectToString(d) === '[object Date]';
-}
-exports.isDate = isDate;
-
-function isError(e) {
-  return (objectToString(e) === '[object Error]' || e instanceof Error);
-}
-exports.isError = isError;
-
-function isFunction(arg) {
-  return typeof arg === 'function';
-}
-exports.isFunction = isFunction;
-
-function isPrimitive(arg) {
-  return arg === null ||
-         typeof arg === 'boolean' ||
-         typeof arg === 'number' ||
-         typeof arg === 'string' ||
-         typeof arg === 'symbol' ||  // ES6 symbol
-         typeof arg === 'undefined';
-}
-exports.isPrimitive = isPrimitive;
-
-exports.isBuffer = Buffer.isBuffer;
-
-function objectToString(o) {
-  return Object.prototype.toString.call(o);
-}
-
-}).call(this,{"isBuffer":_dereq_(14)})
-
-},{"14":14}],25:[function(_dereq_,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"11":11}],26:[function(_dereq_,module,exports){
-(function (process){
 'use strict';
 
-if (!process.version ||
-    process.version.indexOf('v0.') === 0 ||
-    process.version.indexOf('v1.') === 0 && process.version.indexOf('v1.8.') !== 0) {
-  module.exports = nextTick;
-} else {
-  module.exports = process.nextTick;
+/*<replacement>*/
+
+var Buffer = _dereq_(33).Buffer;
+/*</replacement>*/
+
+var isEncoding = Buffer.isEncoding || function (encoding) {
+  encoding = '' + encoding;
+  switch (encoding && encoding.toLowerCase()) {
+    case 'hex':case 'utf8':case 'utf-8':case 'ascii':case 'binary':case 'base64':case 'ucs2':case 'ucs-2':case 'utf16le':case 'utf-16le':case 'raw':
+      return true;
+    default:
+      return false;
+  }
+};
+
+function _normalizeEncoding(enc) {
+  if (!enc) return 'utf8';
+  var retried;
+  while (true) {
+    switch (enc) {
+      case 'utf8':
+      case 'utf-8':
+        return 'utf8';
+      case 'ucs2':
+      case 'ucs-2':
+      case 'utf16le':
+      case 'utf-16le':
+        return 'utf16le';
+      case 'latin1':
+      case 'binary':
+        return 'latin1';
+      case 'base64':
+      case 'ascii':
+      case 'hex':
+        return enc;
+      default:
+        if (retried) return; // undefined
+        enc = ('' + enc).toLowerCase();
+        retried = true;
+    }
+  }
+};
+
+// Do not cache `Buffer.isEncoding` when checking encoding names as some
+// modules monkey-patch it to support additional encodings
+function normalizeEncoding(enc) {
+  var nenc = _normalizeEncoding(enc);
+  if (typeof nenc !== 'string' && (Buffer.isEncoding === isEncoding || !isEncoding(enc))) throw new Error('Unknown encoding: ' + enc);
+  return nenc || enc;
 }
 
-function nextTick(fn, arg1, arg2, arg3) {
-  if (typeof fn !== 'function') {
-    throw new TypeError('"callback" argument must be a function');
+// StringDecoder provides an interface for efficiently splitting a series of
+// buffers into a series of JS strings without breaking apart multi-byte
+// characters.
+exports.StringDecoder = StringDecoder;
+function StringDecoder(encoding) {
+  this.encoding = normalizeEncoding(encoding);
+  var nb;
+  switch (this.encoding) {
+    case 'utf16le':
+      this.text = utf16Text;
+      this.end = utf16End;
+      nb = 4;
+      break;
+    case 'utf8':
+      this.fillLast = utf8FillLast;
+      nb = 4;
+      break;
+    case 'base64':
+      this.text = base64Text;
+      this.end = base64End;
+      nb = 3;
+      break;
+    default:
+      this.write = simpleWrite;
+      this.end = simpleEnd;
+      return;
   }
-  var len = arguments.length;
-  var args, i;
-  switch (len) {
-  case 0:
-  case 1:
-    return process.nextTick(fn);
-  case 2:
-    return process.nextTick(function afterTickOne() {
-      fn.call(null, arg1);
-    });
-  case 3:
-    return process.nextTick(function afterTickTwo() {
-      fn.call(null, arg1, arg2);
-    });
-  case 4:
-    return process.nextTick(function afterTickThree() {
-      fn.call(null, arg1, arg2, arg3);
-    });
-  default:
-    args = new Array(len - 1);
+  this.lastNeed = 0;
+  this.lastTotal = 0;
+  this.lastChar = Buffer.allocUnsafe(nb);
+}
+
+StringDecoder.prototype.write = function (buf) {
+  if (buf.length === 0) return '';
+  var r;
+  var i;
+  if (this.lastNeed) {
+    r = this.fillLast(buf);
+    if (r === undefined) return '';
+    i = this.lastNeed;
+    this.lastNeed = 0;
+  } else {
     i = 0;
-    while (i < args.length) {
-      args[i++] = arguments[i];
-    }
-    return process.nextTick(function afterTick() {
-      fn.apply(null, args);
-    });
   }
+  if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
+  return r || '';
+};
+
+StringDecoder.prototype.end = utf8End;
+
+// Returns only complete characters in a Buffer
+StringDecoder.prototype.text = utf8Text;
+
+// Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
+StringDecoder.prototype.fillLast = function (buf) {
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+  }
+  buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
+  this.lastNeed -= buf.length;
+};
+
+// Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
+// continuation byte. If an invalid byte is detected, -2 is returned.
+function utf8CheckByte(byte) {
+  if (byte <= 0x7F) return 0;else if (byte >> 5 === 0x06) return 2;else if (byte >> 4 === 0x0E) return 3;else if (byte >> 3 === 0x1E) return 4;
+  return byte >> 6 === 0x02 ? -1 : -2;
 }
 
-}).call(this,_dereq_(15))
-
-},{"15":15}],27:[function(_dereq_,module,exports){
-(function (global){
-
-/**
- * Module exports.
- */
-
-module.exports = deprecate;
-
-/**
- * Mark that a method should not be used.
- * Returns a modified function which warns once by default.
- *
- * If `localStorage.noDeprecation = true` is set, then it is a no-op.
- *
- * If `localStorage.throwDeprecation = true` is set, then deprecated functions
- * will throw an Error when invoked.
- *
- * If `localStorage.traceDeprecation = true` is set, then deprecated functions
- * will invoke `console.trace()` instead of `console.error()`.
- *
- * @param {Function} fn - the function to deprecate
- * @param {String} msg - the string to print to the console when `fn` is invoked
- * @returns {Function} a new "deprecated" version of `fn`
- * @api public
- */
-
-function deprecate (fn, msg) {
-  if (config('noDeprecation')) {
-    return fn;
+// Checks at most 3 bytes at the end of a Buffer in order to detect an
+// incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
+// needed to complete the UTF-8 character (if applicable) are returned.
+function utf8CheckIncomplete(self, buf, i) {
+  var j = buf.length - 1;
+  if (j < i) return 0;
+  var nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 1;
+    return nb;
   }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 2;
+    return nb;
+  }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) {
+      if (nb === 2) nb = 0;else self.lastNeed = nb - 3;
+    }
+    return nb;
+  }
+  return 0;
+}
 
-  var warned = false;
-  function deprecated() {
-    if (!warned) {
-      if (config('throwDeprecation')) {
-        throw new Error(msg);
-      } else if (config('traceDeprecation')) {
-        console.trace(msg);
-      } else {
-        console.warn(msg);
+// Validates as many continuation bytes for a multi-byte UTF-8 character as
+// needed or are available. If we see a non-continuation byte where we expect
+// one, we "replace" the validated continuation bytes we've seen so far with
+// a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
+// behavior. The continuation byte check is included three times in the case
+// where all of the continuation bytes for a character exist in the same buffer.
+// It is also done this way as a slight performance increase instead of using a
+// loop.
+function utf8CheckExtraBytes(self, buf, p) {
+  if ((buf[0] & 0xC0) !== 0x80) {
+    self.lastNeed = 0;
+    return '\ufffd';
+  }
+  if (self.lastNeed > 1 && buf.length > 1) {
+    if ((buf[1] & 0xC0) !== 0x80) {
+      self.lastNeed = 1;
+      return '\ufffd';
+    }
+    if (self.lastNeed > 2 && buf.length > 2) {
+      if ((buf[2] & 0xC0) !== 0x80) {
+        self.lastNeed = 2;
+        return '\ufffd';
       }
-      warned = true;
     }
-    return fn.apply(this, arguments);
   }
-
-  return deprecated;
 }
 
-/**
- * Checks `localStorage` for boolean values for the given `name`.
- *
- * @param {String} name
- * @returns {Boolean}
- * @api private
- */
-
-function config (name) {
-  // accessing global.localStorage can trigger a DOMException in sandboxed iframes
-  try {
-    if (!global.localStorage) return false;
-  } catch (_) {
-    return false;
+// Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
+function utf8FillLast(buf) {
+  var p = this.lastTotal - this.lastNeed;
+  var r = utf8CheckExtraBytes(this, buf, p);
+  if (r !== undefined) return r;
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, p, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
   }
-  var val = global.localStorage[name];
-  if (null == val) return false;
-  return String(val).toLowerCase() === 'true';
+  buf.copy(this.lastChar, p, 0, buf.length);
+  this.lastNeed -= buf.length;
 }
 
-}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+// Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
+// partial character, the character's bytes are buffered until the required
+// number of bytes are available.
+function utf8Text(buf, i) {
+  var total = utf8CheckIncomplete(this, buf, i);
+  if (!this.lastNeed) return buf.toString('utf8', i);
+  this.lastTotal = total;
+  var end = buf.length - (total - this.lastNeed);
+  buf.copy(this.lastChar, 0, end);
+  return buf.toString('utf8', i, end);
+}
 
-},{}],28:[function(_dereq_,module,exports){
-module.exports = _dereq_(18)
+// For UTF-8, a replacement character is added when ending on a partial
+// character.
+function utf8End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + '\ufffd';
+  return r;
+}
 
-},{"18":18}],29:[function(_dereq_,module,exports){
-(function (process){
-var Stream = (function (){
-  try {
-    return _dereq_('st' + 'ream'); // hack to fix a circular dependency issue when used with browserify
-  } catch(_){}
-}());
-exports = module.exports = _dereq_(19);
-exports.Stream = Stream || exports;
+// UTF-16LE typically needs two bytes per character, but even if we have an even
+// number of bytes available, we need to check if we end on a leading/high
+// surrogate. In that case, we need to wait for the next two bytes in order to
+// decode the last character properly.
+function utf16Text(buf, i) {
+  if ((buf.length - i) % 2 === 0) {
+    var r = buf.toString('utf16le', i);
+    if (r) {
+      var c = r.charCodeAt(r.length - 1);
+      if (c >= 0xD800 && c <= 0xDBFF) {
+        this.lastNeed = 2;
+        this.lastTotal = 4;
+        this.lastChar[0] = buf[buf.length - 2];
+        this.lastChar[1] = buf[buf.length - 1];
+        return r.slice(0, -1);
+      }
+    }
+    return r;
+  }
+  this.lastNeed = 1;
+  this.lastTotal = 2;
+  this.lastChar[0] = buf[buf.length - 1];
+  return buf.toString('utf16le', i, buf.length - 1);
+}
+
+// For UTF-16LE we do not explicitly append special replacement characters if we
+// end on a partial character, we simply let v8 handle that.
+function utf16End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) {
+    var end = this.lastTotal - this.lastNeed;
+    return r + this.lastChar.toString('utf16le', 0, end);
+  }
+  return r;
+}
+
+function base64Text(buf, i) {
+  var n = (buf.length - i) % 3;
+  if (n === 0) return buf.toString('base64', i);
+  this.lastNeed = 3 - n;
+  this.lastTotal = 3;
+  if (n === 1) {
+    this.lastChar[0] = buf[buf.length - 1];
+  } else {
+    this.lastChar[0] = buf[buf.length - 2];
+    this.lastChar[1] = buf[buf.length - 1];
+  }
+  return buf.toString('base64', i, buf.length - n);
+}
+
+function base64End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + this.lastChar.toString('base64', 0, 3 - this.lastNeed);
+  return r;
+}
+
+// Pass bytes on through for single-byte encodings (e.g. ascii, latin1, hex)
+function simpleWrite(buf) {
+  return buf.toString(this.encoding);
+}
+
+function simpleEnd(buf) {
+  return buf && buf.length ? this.write(buf) : '';
+}
+},{"33":33}],29:[function(_dereq_,module,exports){
+module.exports = _dereq_(30).PassThrough
+
+},{"30":30}],30:[function(_dereq_,module,exports){
+exports = module.exports = _dereq_(21);
+exports.Stream = exports;
 exports.Readable = exports;
-exports.Writable = _dereq_(21);
-exports.Duplex = _dereq_(17);
-exports.Transform = _dereq_(20);
-exports.PassThrough = _dereq_(18);
+exports.Writable = _dereq_(23);
+exports.Duplex = _dereq_(19);
+exports.Transform = _dereq_(22);
+exports.PassThrough = _dereq_(20);
 
-if (!process.browser && process.env.READABLE_STREAM === 'disable' && Stream) {
-  module.exports = Stream;
+},{"19":19,"20":20,"21":21,"22":22,"23":23}],31:[function(_dereq_,module,exports){
+module.exports = _dereq_(30).Transform
+
+},{"30":30}],32:[function(_dereq_,module,exports){
+module.exports = _dereq_(23);
+
+},{"23":23}],33:[function(_dereq_,module,exports){
+/* eslint-disable node/no-deprecated-api */
+var buffer = _dereq_(9)
+var Buffer = buffer.Buffer
+
+// alternative to using Object.keys for old browsers
+function copyProps (src, dst) {
+  for (var key in src) {
+    dst[key] = src[key]
+  }
+}
+if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
+  module.exports = buffer
+} else {
+  // Copy properties from require('buffer')
+  copyProps(buffer, exports)
+  exports.Buffer = SafeBuffer
 }
 
-}).call(this,_dereq_(15))
+function SafeBuffer (arg, encodingOrOffset, length) {
+  return Buffer(arg, encodingOrOffset, length)
+}
 
-},{"15":15,"17":17,"18":18,"19":19,"20":20,"21":21}],30:[function(_dereq_,module,exports){
-module.exports = _dereq_(20)
+// Copy static methods from Buffer
+copyProps(Buffer, SafeBuffer)
 
-},{"20":20}],31:[function(_dereq_,module,exports){
-module.exports = _dereq_(21)
+SafeBuffer.from = function (arg, encodingOrOffset, length) {
+  if (typeof arg === 'number') {
+    throw new TypeError('Argument must not be a number')
+  }
+  return Buffer(arg, encodingOrOffset, length)
+}
 
-},{"21":21}],32:[function(_dereq_,module,exports){
+SafeBuffer.alloc = function (size, fill, encoding) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  var buf = Buffer(size)
+  if (fill !== undefined) {
+    if (typeof encoding === 'string') {
+      buf.fill(fill, encoding)
+    } else {
+      buf.fill(fill)
+    }
+  } else {
+    buf.fill(0)
+  }
+  return buf
+}
+
+SafeBuffer.allocUnsafe = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return Buffer(size)
+}
+
+SafeBuffer.allocUnsafeSlow = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number')
+  }
+  return buffer.SlowBuffer(size)
+}
+
+},{"9":9}],34:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7813,14 +8398,14 @@ module.exports = _dereq_(21)
 module.exports = Stream;
 
 var EE = _dereq_(12).EventEmitter;
-var inherits = _dereq_(13);
+var inherits = _dereq_(14);
 
 inherits(Stream, EE);
-Stream.Readable = _dereq_(29);
-Stream.Writable = _dereq_(31);
-Stream.Duplex = _dereq_(16);
-Stream.Transform = _dereq_(30);
-Stream.PassThrough = _dereq_(28);
+Stream.Readable = _dereq_(30);
+Stream.Writable = _dereq_(32);
+Stream.Duplex = _dereq_(18);
+Stream.Transform = _dereq_(31);
+Stream.PassThrough = _dereq_(29);
 
 // Backwards-compat with node 0.4.x
 Stream.Stream = Stream;
@@ -7917,7 +8502,7 @@ Stream.prototype.pipe = function(dest, options) {
   return dest;
 };
 
-},{"12":12,"13":13,"16":16,"28":28,"29":29,"30":30,"31":31}],33:[function(_dereq_,module,exports){
+},{"12":12,"14":14,"18":18,"29":29,"30":30,"31":31,"32":32}],35:[function(_dereq_,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7939,7 +8524,7 @@ Stream.prototype.pipe = function(dest, options) {
 // OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 // USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-var Buffer = _dereq_(8).Buffer;
+var Buffer = _dereq_(9).Buffer;
 
 var isBufferEncoding = Buffer.isEncoding
   || function(encoding) {
@@ -8140,7 +8725,4299 @@ function base64DetectIncompleteChar(buffer) {
   this.charLength = this.charReceived ? 3 : 0;
 }
 
-},{"8":8}],34:[function(_dereq_,module,exports){
+},{"9":9}],36:[function(_dereq_,module,exports){
+(function (global){
+
+/**
+ * Module exports.
+ */
+
+module.exports = deprecate;
+
+/**
+ * Mark that a method should not be used.
+ * Returns a modified function which warns once by default.
+ *
+ * If `localStorage.noDeprecation = true` is set, then it is a no-op.
+ *
+ * If `localStorage.throwDeprecation = true` is set, then deprecated functions
+ * will throw an Error when invoked.
+ *
+ * If `localStorage.traceDeprecation = true` is set, then deprecated functions
+ * will invoke `console.trace()` instead of `console.error()`.
+ *
+ * @param {Function} fn - the function to deprecate
+ * @param {String} msg - the string to print to the console when `fn` is invoked
+ * @returns {Function} a new "deprecated" version of `fn`
+ * @api public
+ */
+
+function deprecate (fn, msg) {
+  if (config('noDeprecation')) {
+    return fn;
+  }
+
+  var warned = false;
+  function deprecated() {
+    if (!warned) {
+      if (config('throwDeprecation')) {
+        throw new Error(msg);
+      } else if (config('traceDeprecation')) {
+        console.trace(msg);
+      } else {
+        console.warn(msg);
+      }
+      warned = true;
+    }
+    return fn.apply(this, arguments);
+  }
+
+  return deprecated;
+}
+
+/**
+ * Checks `localStorage` for boolean values for the given `name`.
+ *
+ * @param {String} name
+ * @returns {Boolean}
+ * @api private
+ */
+
+function config (name) {
+  // accessing global.localStorage can trigger a DOMException in sandboxed iframes
+  try {
+    if (!global.localStorage) return false;
+  } catch (_) {
+    return false;
+  }
+  var val = global.localStorage[name];
+  if (null == val) return false;
+  return String(val).toLowerCase() === 'true';
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+
+},{}],37:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscDoc
+ */
+
+;
+(function (imscDoc, sax, imscNames, imscStyles, imscUtils) {
+
+
+    /**
+     * Allows a client to provide callbacks to handle children of the <metadata> element
+     * @typedef {Object} MetadataHandler
+     * @property {?OpenTagCallBack} onOpenTag
+     * @property {?CloseTagCallBack} onCloseTag
+     * @property {?TextCallBack} onText
+     */
+
+    /**
+     * Called when the opening tag of an element node is encountered.
+     * @callback OpenTagCallBack
+     * @param {string} ns Namespace URI of the element
+     * @param {string} name Local name of the element
+     * @param {Object[]} attributes List of attributes, each consisting of a
+     *                              `uri`, `name` and `value`
+     */
+
+    /**
+     * Called when the closing tag of an element node is encountered.
+     * @callback CloseTagCallBack
+     */
+
+    /**
+     * Called when a text node is encountered.
+     * @callback TextCallBack
+     * @param {string} contents Contents of the text node
+     */
+
+    /**
+     * Parses an IMSC1 document into an opaque in-memory representation that exposes
+     * a single method <pre>getMediaTimeEvents()</pre> that returns a list of time
+     * offsets (in seconds) of the ISD, i.e. the points in time where the visual
+     * representation of the document change. `metadataHandler` allows the caller to
+     * be called back when nodes are present in <metadata> elements. 
+     * 
+     * @param {string} xmlstring XML document
+     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
+     * @param {?MetadataHandler} metadataHandler Callback for <Metadata> elements
+     * @returns {Object} Opaque in-memory representation of an IMSC1 document
+     */
+
+    imscDoc.fromXML = function (xmlstring, errorHandler, metadataHandler) {
+        var p = sax.parser(true, {xmlns: true});
+        var estack = [];
+        var xmllangstack = [];
+        var xmlspacestack = [];
+        var metadata_depth = 0;
+        var doc = null;
+
+        p.onclosetag = function (node) {
+
+            if (estack[0] instanceof Styling) {
+
+                /* flatten chained referential styling */
+
+                for (var sid in estack[0].styles) {
+
+                    mergeChainedStyles(estack[0], estack[0].styles[sid], errorHandler);
+
+                }
+
+            } else if (estack[0] instanceof P || estack[0] instanceof Span) {
+
+                /* merge anonymous spans */
+
+                if (estack[0].contents.length > 1) {
+
+                    var cs = [estack[0].contents[0]];
+
+                    var c;
+
+                    for (c = 1; c < estack[0].contents.length; c++) {
+
+                        if (estack[0].contents[c] instanceof AnonymousSpan &&
+                            cs[cs.length - 1] instanceof AnonymousSpan) {
+
+                            cs[cs.length - 1].text += estack[0].contents[c].text;
+
+                        } else {
+
+                            cs.push(estack[0].contents[c]);
+
+                        }
+
+                    }
+
+                    estack[0].contents = cs;
+
+                }
+
+                // remove redundant nested anonymous spans (9.3.3(1)(c))
+
+                if (estack[0] instanceof Span &&
+                    estack[0].contents.length === 1 &&
+                    estack[0].contents[0] instanceof AnonymousSpan &&
+                    estack[0].text === null) {
+
+                    estack[0].text = estack[0].contents[0].text;
+                    delete estack[0].contents;
+
+                }
+
+            } else if (estack[0] instanceof ForeignElement) {
+
+                if (estack[0].node.uri === imscNames.ns_tt &&
+                    estack[0].node.local === 'metadata') {
+
+                    /* leave the metadata element */
+
+                    metadata_depth--;
+
+                } else if (metadata_depth > 0 &&
+                    metadataHandler &&
+                    'onCloseTag' in metadataHandler) {
+
+                    /* end of child of metadata element */
+
+                    metadataHandler.onCloseTag();
+
+                }
+
+            }
+
+            // TODO: delete stylerefs?
+
+            // maintain the xml:space stack
+
+            xmlspacestack.shift();
+
+            // maintain the xml:lang stack
+
+            xmllangstack.shift();
+
+            // prepare for the next element
+
+            estack.shift();
+        };
+
+        p.ontext = function (str) {
+
+            if (estack[0] === undefined) {
+
+                /* ignoring text outside of elements */
+
+            } else if (estack[0] instanceof Span || estack[0] instanceof P) {
+
+                /* create an anonymous span */
+                
+                var s = new AnonymousSpan();
+              
+                s.initFromText(doc, estack[0], str, xmlspacestack[0], errorHandler);
+
+                estack[0].contents.push(s);
+
+            } else if (estack[0] instanceof ForeignElement &&
+                metadata_depth > 0 &&
+                metadataHandler &&
+                'onText' in metadataHandler) {
+
+                /* text node within a child of metadata element */
+
+                metadataHandler.onText(str);
+
+            }
+
+        };
+
+
+        p.onopentag = function (node) {
+
+            // maintain the xml:space stack
+
+            var xmlspace = node.attributes["xml:space"];
+
+            if (xmlspace) {
+
+                xmlspacestack.unshift(xmlspace.value);
+
+            } else {
+
+                if (xmlspacestack.length === 0) {
+
+                    xmlspacestack.unshift("default");
+
+                } else {
+
+                    xmlspacestack.unshift(xmlspacestack[0]);
+
+                }
+
+            }
+
+            /* maintain the xml:lang stack */
+
+
+            var xmllang = node.attributes["xml:lang"];
+
+            if (xmllang) {
+
+                xmllangstack.unshift(xmllang.value);
+
+            } else {
+
+                if (xmllangstack.length === 0) {
+
+                    xmllangstack.unshift("");
+
+                } else {
+
+                    xmllangstack.unshift(xmllangstack[0]);
+
+                }
+
+            }
+
+
+            /* process the element */
+
+            if (node.uri === imscNames.ns_tt) {
+
+                if (node.local === 'tt') {
+
+                    if (doc !== null) {
+
+                        reportFatal("Two <tt> elements at (" + this.line + "," + this.column + ")");
+
+                    }
+
+                    doc = new TT();
+
+                    doc.initFromNode(node, errorHandler);
+
+                    estack.unshift(doc);
+
+                } else if (node.local === 'head') {
+
+                    if (!(estack[0] instanceof TT)) {
+                        reportFatal("Parent of <head> element is not <tt> at (" + this.line + "," + this.column + ")");
+                    }
+
+                    if (doc.head !== null) {
+                        reportFatal("Second <head> element at (" + this.line + "," + this.column + ")");
+                    }
+
+                    doc.head = new Head();
+
+                    estack.unshift(doc.head);
+
+                } else if (node.local === 'styling') {
+
+                    if (!(estack[0] instanceof Head)) {
+                        reportFatal("Parent of <styling> element is not <head> at (" + this.line + "," + this.column + ")");
+                    }
+
+                    if (doc.head.styling !== null) {
+                        reportFatal("Second <styling> element at (" + this.line + "," + this.column + ")");
+                    }
+
+                    doc.head.styling = new Styling();
+
+                    estack.unshift(doc.head.styling);
+
+                } else if (node.local === 'style') {
+
+                    var s;
+
+                    if (estack[0] instanceof Styling) {
+
+                        s = new Style();
+
+                        s.initFromNode(node, errorHandler);
+
+                        /* ignore <style> element missing @id */
+
+                        if (!s.id) {
+
+                            reportError("<style> element missing @id attribute");
+
+                        } else {
+
+                            doc.head.styling.styles[s.id] = s;
+
+                        }
+
+                        estack.unshift(s);
+
+                    } else if (estack[0] instanceof Region) {
+
+                        /* nested styles can be merged with specified styles
+                         * immediately, with lower priority
+                         * (see 8.4.4.2(3) at TTML1 )
+                         */
+
+                        s = new Style();
+
+                        s.initFromNode(node, errorHandler);
+
+                        mergeStylesIfNotPresent(s.styleAttrs, estack[0].styleAttrs);
+
+                        estack.unshift(s);
+
+                    } else {
+
+                        reportFatal(errorHandler, "Parent of <style> element is not <styling> or <region> at (" + this.line + "," + this.column + ")");
+
+                    }
+
+                } else if (node.local === 'layout') {
+
+                    if (!(estack[0] instanceof Head)) {
+
+                        reportFatal(errorHandler, "Parent of <layout> element is not <head> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    if (doc.head.layout !== null) {
+
+                        reportFatal(errorHandler, "Second <layout> element at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    doc.head.layout = new Layout();
+
+                    estack.unshift(doc.head.layout);
+
+                } else if (node.local === 'region') {
+
+                    if (!(estack[0] instanceof Layout)) {
+                        reportFatal(errorHandler, "Parent of <region> element is not <layout> at " + this.line + "," + this.column + ")");
+                    }
+
+                    var r = new Region();
+
+                    r.initFromNode(doc, node, errorHandler);
+
+                    if (!r.id || r.id in doc.head.layout.regions) {
+
+                        reportError(errorHandler, "Ignoring <region> with duplicate or missing @id at " + this.line + "," + this.column + ")");
+
+                    } else {
+
+                        doc.head.layout.regions[r.id] = r;
+
+                        doc._registerEvent(r);
+
+                    }
+
+                    estack.unshift(r);
+
+                } else if (node.local === 'body') {
+
+                    if (!(estack[0] instanceof TT)) {
+
+                        reportFatal(errorHandler, "Parent of <body> element is not <tt> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    if (doc.body !== null) {
+
+                        reportFatal(errorHandler, "Second <body> element at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var b = new Body();
+
+                    b.initFromNode(doc, node, errorHandler);
+
+                    doc._registerEvent(b);
+
+                    doc.body = b;
+
+                    estack.unshift(b);
+
+                } else if (node.local === 'div') {
+
+                    if (!(estack[0] instanceof Div || estack[0] instanceof Body)) {
+
+                        reportFatal(errorHandler, "Parent of <div> element is not <body> or <div> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var d = new Div();
+
+                    d.initFromNode(doc, estack[0], node, errorHandler);
+
+                    doc._registerEvent(d);
+
+                    estack[0].contents.push(d);
+
+                    estack.unshift(d);
+
+                } else if (node.local === 'p') {
+
+                    if (!(estack[0] instanceof Div)) {
+
+                        reportFatal(errorHandler, "Parent of <p> element is not <div> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var p = new P();
+
+                    p.initFromNode(doc, estack[0], node, errorHandler);
+
+                    doc._registerEvent(p);
+
+                    estack[0].contents.push(p);
+
+                    estack.unshift(p);
+
+                } else if (node.local === 'span') {
+
+                    if (!(estack[0] instanceof Span || estack[0] instanceof P)) {
+
+                        reportFatal(errorHandler, "Parent of <span> element is not <span> or <p> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var ns = new Span();
+
+                    ns.initFromNode(doc, estack[0], node, xmlspacestack[0], errorHandler);
+
+                    doc._registerEvent(ns);
+
+                    estack[0].contents.push(ns);
+
+                    estack.unshift(ns);
+
+                } else if (node.local === 'br') {
+
+                    if (!(estack[0] instanceof Span || estack[0] instanceof P)) {
+
+                        reportFatal(errorHandler, "Parent of <br> element is not <span> or <p> at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var nb = new Br();
+
+                    nb.initFromNode(doc, estack[0], node, errorHandler);
+
+                    doc._registerEvent(nb);
+
+                    estack[0].contents.push(nb);
+
+                    estack.unshift(nb);
+
+                } else if (node.local === 'set') {
+
+                    if (!(estack[0] instanceof Span ||
+                        estack[0] instanceof P ||
+                        estack[0] instanceof Div ||
+                        estack[0] instanceof Body ||
+                        estack[0] instanceof Region ||
+                        estack[0] instanceof Br)) {
+
+                        reportFatal(errorHandler, "Parent of <set> element is not a content element or a region at " + this.line + "," + this.column + ")");
+
+                    }
+
+                    var st = new Set();
+
+                    st.initFromNode(doc, estack[0], node, errorHandler);
+
+                    doc._registerEvent(st);
+
+                    estack[0].sets.push(st);
+
+                    estack.unshift(st);
+
+                } else {
+
+                    /* element in the TT namespace, but not a content element */
+
+                    estack.unshift(new ForeignElement(node));
+                }
+
+            } else {
+
+                /* ignore elements not in the TTML namespace unless in metadata element */
+
+                estack.unshift(new ForeignElement(node));
+
+            }
+
+            /* handle metadata callbacks */
+
+            if (estack[0] instanceof ForeignElement) {
+
+                if (node.uri === imscNames.ns_tt &&
+                    node.local === 'metadata') {
+
+                    /* enter the metadata element */
+
+                    metadata_depth++;
+
+                } else if (
+                    metadata_depth > 0 &&
+                    metadataHandler &&
+                    'onOpenTag' in metadataHandler
+                    ) {
+
+                    /* start of child of metadata element */
+
+                    var attrs = [];
+
+                    for (var a in node.attributes) {
+                        attrs[node.attributes[a].uri + " " + node.attributes[a].local] =
+                            {
+                                uri: node.attributes[a].uri,
+                                local: node.attributes[a].local,
+                                value: node.attributes[a].value
+                            };
+                    }
+
+                    metadataHandler.onOpenTag(node.uri, node.local, attrs);
+
+                }
+
+            }
+
+        };
+
+        // parse the document
+
+        p.write(xmlstring).close();
+
+        // all referential styling has been flatten, so delete the styling elements if there is a head
+        // otherwise create an empty head
+
+        if (doc.head !== null) {
+            delete doc.head.styling;
+        } else {
+            doc.head = new Head();
+        }
+
+        // create default region if no regions specified
+
+        if (doc.head.layout === null) {
+
+            doc.head.layout = new Layout();
+
+        }
+
+        var hasRegions = false;
+
+        /* AFAIK the only way to determine whether an object has members */
+
+        for (var i in doc.head.layout.regions) {
+
+            hasRegions = true;
+
+            break;
+
+        }
+
+        if (!hasRegions) {
+
+            var dr = Region.createDefaultRegion();
+
+            doc.head.layout.regions[dr.id] = dr;
+
+        }
+
+        return doc;
+    };
+
+    function ForeignElement(node) {
+        this.node = node;
+    }
+
+    function TT() {
+        this.events = [];
+        this.head = null;
+        this.body = null;
+    }
+
+    TT.prototype.initFromNode = function (node, errorHandler) {
+
+        /* compute cell resolution */
+
+        this.cellResolution = extractCellResolution(node, errorHandler);
+
+        /* extract frame rate and tick rate */
+
+        var frtr = extractFrameAndTickRate(node, errorHandler);
+
+        this.effectiveFrameRate = frtr.effectiveFrameRate;
+
+        this.tickRate = frtr.tickRate;
+
+        /* extract aspect ratio */
+
+        this.aspectRatio = extractAspectRatio(node, errorHandler);
+
+        /* check timebase */
+
+        var attr = findAttribute(node, imscNames.ns_ttp, "timeBase");
+
+        if (attr !== null && attr !== "media") {
+
+            reportFatal(errorHandler, "Unsupported time base");
+
+        }
+
+        /* retrieve extent */
+
+        var e = extractExtent(node, errorHandler);
+
+        if (e === null) {
+
+            /* TODO: remove once unit tests are ready */
+
+            this.pxDimensions = {'h': 480, 'w': 640};
+
+        } else {
+
+            if (e.h.unit !== "px" || e.w.unit !== "px") {
+                reportFatal(errorHandler, "Extent on TT must be in px or absent");
+            }
+
+            this.pxDimensions = {'h': e.h.value, 'w': e.w.value};
+        }
+
+    };
+
+    /* register a temporal events */
+    TT.prototype._registerEvent = function (elem) {
+
+        /* skip if begin is not < then end */
+
+        if (elem.end <= elem.begin) return;
+
+        /* index the begin time of the event */
+
+        var b_i = indexOf(this.events, elem.begin);
+
+        if (!b_i.found) {
+            this.events.splice(b_i.index, 0, elem.begin);
+        }
+
+        /* index the end time of the event */
+
+        if (elem.end !== Number.POSITIVE_INFINITY) {
+
+            var e_i = indexOf(this.events, elem.end);
+
+            if (!e_i.found) {
+                this.events.splice(e_i.index, 0, elem.end);
+            }
+
+        }
+
+    };
+
+
+    /*
+     * Retrieves the range of ISD times covered by the document
+     * 
+     * @returns {Array} Array of two elements: min_begin_time and max_begin_time
+     * 
+     */
+    TT.prototype.getMediaTimeRange = function () {
+
+        return [this.events[0], this.events[this.events.length - 1]];
+    };
+
+    /*
+     * Returns list of ISD begin times  
+     * 
+     * @returns {Array}
+     */
+    TT.prototype.getMediaTimeEvents = function () {
+
+        return this.events;
+    };
+
+    /*
+     * Represents a TTML Head element
+     */
+
+    function Head() {
+        this.styling = null;
+        this.layout = null;
+    }
+
+    /*
+     * Represents a TTML Styling element
+     */
+
+    function Styling() {
+        this.styles = {};
+    }
+
+    /*
+     * Represents a TTML Style element
+     */
+
+    function Style() {
+        this.id = null;
+        this.styleAttrs = null;
+        this.styleRefs = null;
+    }
+
+    Style.prototype.initFromNode = function (node, errorHandler) {
+        this.id = elementGetXMLID(node);
+        this.styleAttrs = elementGetStyles(node, errorHandler);
+        this.styleRefs = elementGetStyleRefs(node);
+    };
+
+    /*
+     * Represents a TTML Layout element
+     * 
+     */
+
+    function Layout() {
+        this.regions = {};
+    }
+
+    /*
+     * Represents a TTML Content element
+     * 
+     */
+
+    function ContentElement(kind) {
+        this.kind = kind;
+        this.begin = null;
+        this.end = null;
+        this.styleAttrs = null;
+        this.regionID = null;
+        this.sets = null;
+        this.timeContainer = null;
+    }
+
+    ContentElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
+
+        var t = processTiming(doc, parent, node, errorHandler);
+        this.begin = t.begin;
+        this.end = t.end;
+
+        this.styleAttrs = elementGetStyles(node, errorHandler);
+
+        if (doc.head !== null && doc.head.styling !== null) {
+            mergeReferencedStyles(doc.head.styling, elementGetStyleRefs(node), this.styleAttrs, errorHandler);
+        }
+
+        this.regionID = elementGetRegionID(node);
+
+        this.sets = [];
+
+        this.timeContainer = elementGetTimeContainer(node, errorHandler);
+
+    };
+
+    /*
+     * Represents a TTML body element
+     */
+
+    function Body() {
+        ContentElement.call(this, 'body');
+    }
+
+    Body.prototype.initFromNode = function (doc, node, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
+        this.contents = [];
+    };
+
+    /*
+     * Represents a TTML div element
+     */
+
+    function Div() {
+        ContentElement.call(this, 'div');
+    }
+
+    Div.prototype.initFromNode = function (doc, parent, node, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
+        this.contents = [];
+    };
+
+    /*
+     * Represents a TTML p element
+     */
+
+    function P() {
+        ContentElement.call(this, 'p');
+    }
+
+    P.prototype.initFromNode = function (doc, parent, node, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
+        this.contents = [];
+    };
+
+    /*
+     * Represents a TTML span element
+     */
+
+    function Span() {
+        ContentElement.call(this, 'span');
+        this.space = null;
+    }
+
+    Span.prototype.initFromNode = function (doc, parent, node, xmlspace, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
+        this.space = xmlspace;
+        this.contents = [];
+    };
+    
+    /*
+     * Represents a TTML anonymous span element
+     */
+    
+    function AnonymousSpan() {
+        ContentElement.call(this, 'span');
+        this.space = null;
+        this.text = null;
+    }
+    
+    AnonymousSpan.prototype.initFromText = function (doc, parent, text, xmlspace, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, parent, null, errorHandler);
+        this.text = text;
+        this.space = xmlspace;
+    };
+
+    /*
+     * Represents a TTML br element
+     */
+
+    function Br() {
+        ContentElement.call(this, 'br');
+    }
+
+    Br.prototype.initFromNode = function (doc, parent, node, errorHandler) {
+        ContentElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
+    };
+
+    /*
+     * Represents a TTML Region element
+     * 
+     */
+
+    function Region() {
+        this.id = null;
+        this.begin = null;
+        this.end = null;
+        this.styleAttrs = null;
+        this.sets = null;
+    }
+
+    Region.createDefaultRegion = function () {
+        var r = new Region();
+
+        r.id = '';
+        r.begin = 0;
+        r.end = Number.POSITIVE_INFINITY;
+        r.styleAttrs = {};
+        r.sets = [];
+
+        return r;
+    };
+
+    Region.prototype.initFromNode = function (doc, node, errorHandler) {
+
+        this.id = elementGetXMLID(node);
+
+        var t = processTiming(doc, null, node, errorHandler);
+        this.begin = t.begin;
+        this.end = t.end;
+
+        this.styleAttrs = elementGetStyles(node, errorHandler);
+
+        this.sets = [];
+
+        /* immediately merge referenced styles */
+
+        if (doc.head !== null && doc.head.styling !== null) {
+            mergeReferencedStyles(doc.head.styling, elementGetStyleRefs(node), this.styleAttrs, errorHandler);
+        }
+
+    };
+
+    /*
+     * Represents a TTML Set element
+     * 
+     */
+
+    function Set() {
+        this.begin = null;
+        this.end = null;
+        this.qname = null;
+        this.value = null;
+    }
+
+    Set.prototype.initFromNode = function (doc, parent, node, errorHandler) {
+
+        var t = processTiming(doc, parent, node, errorHandler);
+
+        this.begin = t.begin;
+        this.end = t.end;
+
+        var styles = elementGetStyles(node, errorHandler);
+
+        for (var qname in styles) {
+
+            if (this.qname) {
+
+                reportError(errorHandler, "More than one style specified on set");
+                break;
+
+            }
+
+            this.qname = qname;
+            this.value = styles[qname];
+
+        }
+
+    };
+
+    /*
+     * Utility functions
+     * 
+     */
+
+
+    function elementGetXMLID(node) {
+        return node && 'xml:id' in node.attributes ? node.attributes['xml:id'].value || null : null;
+    }
+
+    function elementGetRegionID(node) {
+        return node && 'region' in node.attributes ? node.attributes.region.value : '';
+    }
+
+    function elementGetTimeContainer(node, errorHandler) {
+
+        var tc = node && 'timeContainer' in node.attributes ? node.attributes.timeContainer.value : null;
+
+        if ((!tc) || tc === "par") {
+
+            return "par";
+
+        } else if (tc === "seq") {
+
+            return "seq";
+
+        } else {
+
+            reportError(errorHandler, "Illegal value of timeContainer (assuming 'par')");
+
+            return "par";
+
+        }
+
+    }
+
+    function elementGetStyleRefs(node) {
+
+        return node && 'style' in node.attributes ? node.attributes.style.value.split(" ") : [];
+
+    }
+
+    function elementGetStyles(node, errorHandler) {
+
+        var s = {};
+
+        if (node !== null) {
+
+            for (var i in node.attributes) {
+
+                var qname = node.attributes[i].uri + " " + node.attributes[i].local;
+
+                var sa = imscStyles.byQName[qname];
+
+                if (sa !== undefined) {
+
+                    var val = sa.parse(node.attributes[i].value);
+
+                    if (val !== null) {
+
+                        s[qname] = val;
+
+                        /* TODO: consider refactoring errorHandler into parse and compute routines */
+
+                        if (sa === imscStyles.byName.zIndex) {
+                            reportWarning(errorHandler, "zIndex attribute present but not used by IMSC1 since regions do not overlap");
+                        }
+
+                    } else {
+
+                        reportError(errorHandler, "Cannot parse styling attribute " + qname + " --> " + node.attributes[i].value);
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        return s;
+    }
+
+    function findAttribute(node, ns, name) {
+        for (var i in node.attributes) {
+
+            if (node.attributes[i].uri === ns &&
+                node.attributes[i].local === name) {
+
+                return node.attributes[i].value;
+            }
+        }
+
+        return null;
+    }
+
+    function extractAspectRatio(node, errorHandler) {
+
+        var ar = findAttribute(node, imscNames.ns_ittp, "aspectRatio");
+
+        var rslt = null;
+
+        if (ar !== null) {
+
+            var ASPECT_RATIO_RE = /(\d+) (\d+)/;
+
+            var m = ASPECT_RATIO_RE.exec(ar);
+
+            if (m !== null) {
+
+                var w = parseInt(m[1]);
+
+                var h = parseInt(m[2]);
+
+                if (w !== 0 && h !== 0) {
+
+                    rslt = w / h;
+
+                } else {
+
+                    reportError(errorHandler, "Illegal aspectRatio values (ignoring)");
+                }
+
+            } else {
+
+                reportError(errorHandler, "Malformed aspectRatio attribute (ignoring)");
+            }
+
+        }
+
+        return rslt;
+
+    }
+
+    /*
+     * Returns the cellResolution attribute from a node
+     * 
+     */
+    function extractCellResolution(node, errorHandler) {
+
+        var cr = findAttribute(node, imscNames.ns_ttp, "cellResolution");
+
+        // initial value
+
+        var h = 15;
+        var w = 32;
+
+        if (cr !== null) {
+
+            var CELL_RESOLUTION_RE = /(\d+) (\d+)/;
+
+            var m = CELL_RESOLUTION_RE.exec(cr);
+
+            if (m !== null) {
+
+                w = parseInt(m[1]);
+
+                h = parseInt(m[2]);
+
+            } else {
+
+                reportWarning(errorHandler, "Malformed cellResolution value (using initial value instead)");
+
+            }
+
+        }
+
+        return {'w': w, 'h': h};
+
+    }
+
+
+    function extractFrameAndTickRate(node, errorHandler) {
+
+        // subFrameRate is ignored per IMSC1 specification
+
+        // extract frame rate
+
+        var fps_attr = findAttribute(node, imscNames.ns_ttp, "frameRate");
+
+        // initial value
+
+        var fps = 30;
+
+        // match variable
+
+        var m;
+
+        if (fps_attr !== null) {
+
+            var FRAME_RATE_RE = /(\d+)/;
+
+            m = FRAME_RATE_RE.exec(fps_attr);
+
+            if (m !== null) {
+
+                fps = parseInt(m[1]);
+
+            } else {
+
+                reportWarning(errorHandler, "Malformed frame rate attribute (using initial value instead)");
+            }
+
+        }
+
+        // extract frame rate multiplier
+
+        var frm_attr = findAttribute(node, imscNames.ns_ttp, "frameRateMultiplier");
+
+        // initial value
+
+        var frm = 1;
+
+        if (frm_attr !== null) {
+
+            var FRAME_RATE_MULT_RE = /(\d+) (\d+)/;
+
+            m = FRAME_RATE_MULT_RE.exec(frm_attr);
+
+            if (m !== null) {
+
+                frm = parseInt(m[1]) / parseInt(m[2]);
+
+            } else {
+
+                reportWarning(errorHandler, "Malformed frame rate multiplier attribute (using initial value instead)");
+            }
+
+        }
+
+        var efps = frm * fps;
+
+        // extract tick rate
+
+        var tr = 1;
+
+        var trattr = findAttribute(node, imscNames.ns_ttp, "tickRate");
+
+        if (trattr === null) {
+
+            if (fps_attr !== null) tr = efps;
+
+        } else {
+
+            var TICK_RATE_RE = /(\d+)/;
+
+            m = TICK_RATE_RE.exec(trattr);
+
+            if (m !== null) {
+
+                tr = parseInt(m[1]);
+
+            } else {
+
+                reportWarning(errorHandler, "Malformed tick rate attribute (using initial value instead)");
+            }
+
+        }
+
+        return {effectiveFrameRate: efps, tickRate: tr};
+
+    }
+
+    function extractExtent(node, errorHandler) {
+
+        var attr = findAttribute(node, imscNames.ns_tts, "extent");
+
+        if (attr === null) return null;
+
+        var s = attr.split(" ");
+
+        if (s.length !== 2) {
+
+            reportWarning(errorHandler, "Malformed extent (ignoring)");
+
+            return null;
+        }
+
+        var w = imscUtils.parseLength(s[0]);
+
+        var h = imscUtils.parseLength(s[1]);
+
+        if (!h || !w) {
+
+            reportWarning(errorHandler, "Malformed extent values (ignoring)");
+
+            return null;
+        }
+
+        return {'h': h, 'w': w};
+
+    }
+
+    function parseTimeExpression(tickRate, effectiveFrameRate, str) {
+
+        var CLOCK_TIME_FRACTION_RE = /^(\d{2,}):(\d\d):(\d\d(?:\.\d+)?)$/;
+        var CLOCK_TIME_FRAMES_RE = /^(\d{2,}):(\d\d):(\d\d)\:(\d{2,})$/;
+        var OFFSET_FRAME_RE = /^(\d+(?:\.\d+)?)f$/;
+        var OFFSET_TICK_RE = /^(\d+(?:\.\d+)?)t$/;
+        var OFFSET_MS_RE = /^(\d+(?:\.\d+)?)ms$/;
+        var OFFSET_S_RE = /^(\d+(?:\.\d+)?)s$/;
+        var OFFSET_H_RE = /^(\d+(?:\.\d+)?)h$/;
+        var OFFSET_M_RE = /^(\d+(?:\.\d+)?)m$/;
+        var m;
+        var r = null;
+        if ((m = OFFSET_FRAME_RE.exec(str)) !== null) {
+
+            if (effectiveFrameRate !== null) {
+
+                r = parseFloat(m[1]) / effectiveFrameRate;
+            }
+
+        } else if ((m = OFFSET_TICK_RE.exec(str)) !== null) {
+
+            if (tickRate !== null) {
+
+                r = parseFloat(m[1]) / tickRate;
+            }
+
+        } else if ((m = OFFSET_MS_RE.exec(str)) !== null) {
+
+            r = parseFloat(m[1]) / 1000.0;
+
+        } else if ((m = OFFSET_S_RE.exec(str)) !== null) {
+
+            r = parseFloat(m[1]);
+
+        } else if ((m = OFFSET_H_RE.exec(str)) !== null) {
+
+            r = parseFloat(m[1]) * 3600.0;
+
+        } else if ((m = OFFSET_M_RE.exec(str)) !== null) {
+
+            r = parseFloat(m[1]) * 60.0;
+
+        } else if ((m = CLOCK_TIME_FRACTION_RE.exec(str)) !== null) {
+
+            r = parseInt(m[1]) * 3600 +
+                parseInt(m[2]) * 60 +
+                parseFloat(m[3]);
+
+        } else if ((m = CLOCK_TIME_FRAMES_RE.exec(str)) !== null) {
+
+            /* this assumes that HH:MM:SS is a clock-time-with-fraction */
+
+            if (effectiveFrameRate !== null) {
+
+                r = parseInt(m[1]) * 3600 +
+                    parseInt(m[2]) * 60 +
+                    parseInt(m[3]) +
+                    (m[4] === null ? 0 : parseInt(m[4]) / effectiveFrameRate);
+            }
+
+        }
+
+        return r;
+    }
+
+    function processTiming(doc, parent, node, errorHandler) {
+
+        /* Q: what does this do <div b=1 e=3><p b=1 e=5> ?*/
+        /* Q: are children clipped by parent time interval? */
+
+        var isseq = parent && parent.timeContainer === "seq";
+
+        /* retrieve begin value */
+
+        var b = 0;
+
+        if (node && 'begin' in node.attributes) {
+
+            b = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.begin.value);
+
+            if (b === null) {
+
+                reportWarning(errorHandler, "Malformed begin value " + node.attributes.begin.value + " (using 0)");
+
+                b = 0;
+
+            }
+
+        }
+
+        /* retrieve dur value */
+
+        /* NOTE: end is not meaningful on seq container children and dur is equal to 0 if not specified */
+
+        var d = isseq ? 0 : null;
+
+        if (node && 'dur' in node.attributes) {
+
+            d = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.dur.value);
+
+            if (d === null) {
+
+                reportWarning(errorHandler, "Malformed dur value " + node.attributes.dur.value + " (ignoring)");
+
+            }
+
+        }
+
+        /* retrieve end value */
+
+        var e = null;
+
+        if (node && 'end' in node.attributes) {
+
+            e = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.end.value);
+
+            if (e === null) {
+
+                reportWarning(errorHandler, "Malformed end value (ignoring)");
+
+            }
+
+        }
+
+        /* compute starting offset */
+
+        var start_off = 0;
+
+        if (parent) {
+
+            if (isseq && 'contents' in parent && parent.contents.length > 0) {
+
+                /*
+                 * if seq time container, offset from the previous sibling end
+                 */
+
+                start_off = parent.contents[parent.contents.length - 1].end;
+
+
+            } else {
+
+                /* 
+                 * retrieve parent begin. Assume 0 if no parent.
+                 * 
+                 */
+
+                start_off = parent.begin || 0;
+
+            }
+
+        }
+
+        /* offset begin per time container semantics */
+
+        b += start_off;
+
+        /* set end */
+
+        if (d !== null) {
+
+            // use dur if specified
+
+            e = b + d;
+
+        } else {
+
+            /* retrieve parent end, or +infinity if none */
+
+            var parent_e = (parent && 'end' in parent) ? parent.end : Number.POSITIVE_INFINITY;
+
+            e = (e !== null) ? e + start_off : parent_e;
+
+        }
+
+        return {begin: b, end: e};
+
+    }
+
+
+
+    function mergeChainedStyles(styling, style, errorHandler) {
+
+        while (style.styleRefs.length > 0) {
+
+            var sref = style.styleRefs.pop();
+
+            if (!(sref in styling.styles)) {
+                reportError(errorHandler, "Non-existant style id referenced");
+                continue;
+            }
+
+            mergeChainedStyles(styling, styling.styles[sref], errorHandler);
+
+            mergeStylesIfNotPresent(styling.styles[sref].styleAttrs, style.styleAttrs);
+
+        }
+
+    }
+
+    function mergeReferencedStyles(styling, stylerefs, styleattrs, errorHandler) {
+
+        for (var i = stylerefs.length - 1; i >= 0; i--) {
+
+            var sref = stylerefs[i];
+
+            if (!(sref in styling.styles)) {
+                reportError(errorHandler, "Non-existant style id referenced");
+                continue;
+            }
+
+            mergeStylesIfNotPresent(styling.styles[sref].styleAttrs, styleattrs);
+
+        }
+
+    }
+
+    function mergeStylesIfNotPresent(from_styles, into_styles) {
+
+        for (var sname in from_styles) {
+
+            if (sname in into_styles)
+                continue;
+
+            into_styles[sname] = from_styles[sname];
+
+        }
+
+    }
+
+    /* TODO: validate style format at parsing */
+
+
+    /*
+     * ERROR HANDLING UTILITY FUNCTIONS
+     * 
+     */
+
+    function reportInfo(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.info && errorHandler.info(msg))
+            throw msg;
+
+    }
+
+    function reportWarning(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.warn && errorHandler.warn(msg))
+            throw msg;
+
+    }
+
+    function reportError(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.error && errorHandler.error(msg))
+            throw msg;
+
+    }
+
+    function reportFatal(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.fatal)
+            errorHandler.fatal(msg);
+
+        throw msg;
+
+    }
+
+    /*
+     * Binary search utility function
+     * 
+     * @typedef {Object} BinarySearchResult
+     * @property {boolean} found Was an exact match found?
+     * @property {number} index Position of the exact match or insert position
+     * 
+     * @returns {BinarySearchResult}
+     */
+
+    function indexOf(arr, searchval) {
+
+        var min = 0;
+        var max = arr.length - 1;
+        var cur;
+
+        while (min <= max) {
+
+            cur = Math.floor((min + max) / 2);
+
+            var curval = arr[cur];
+
+            if (curval < searchval) {
+
+                min = cur + 1;
+
+            } else if (curval > searchval) {
+
+                max = cur - 1;
+
+            } else {
+
+                return {found: true, index: cur};
+
+            }
+
+        }
+
+        return {found: false, index: min};
+    }
+
+
+})(typeof exports === 'undefined' ? this.imscDoc = {} : exports,
+    typeof sax === 'undefined' ? _dereq_(44) : sax,
+    typeof imscNames === 'undefined' ? _dereq_(41) : imscNames,
+    typeof imscStyles === 'undefined' ? _dereq_(42) : imscStyles,
+    typeof imscUtils === 'undefined' ? _dereq_(43) : imscUtils);
+
+},{"41":41,"42":42,"43":43,"44":44}],38:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscHTML
+ */
+
+;
+(function (imscHTML, imscNames, imscStyles) {
+
+    /**
+     * Function that maps <pre>smpte:background</pre> URIs to URLs resolving to image resource
+     * @callback IMGResolver
+     * @param {string} <pre>smpte:background</pre> URI
+     * @return {string} PNG resource URL
+     */
+
+
+    /**
+     * Renders an ISD object (returned by <pre>generateISD()</pre>) into a 
+     * parent element, that must be attached to the DOM. The ISD will be rendered
+     * into a child <pre>div</pre>
+     * with heigh and width equal to the clientHeight and clientWidth of the element,
+     * unless explicitly specified otherwise by the caller. Images URIs specified 
+     * by <pre>smpte:background</pre> attributes are mapped to image resource URLs
+     * by an <pre>imgResolver</pre> function. The latter takes the value of <code>smpte:background</code>
+     * attribute and an <code>img</code> DOM element as input, and is expected to
+     * set the <code>src</code> attribute of the <code>img</code> to the absolute URI of the image.
+     * <pre>displayForcedOnlyMode</pre> sets the (boolean)
+     * value of the IMSC1 displayForcedOnlyMode parameter. The function returns
+     * an opaque object that should passed in <code>previousISDState</code> when this function
+     * is called for the next ISD, otherwise <code>previousISDState</code> should be set to 
+     * <code>null</code>.
+     * 
+     * @param {Object} isd ISD to be rendered
+     * @param {Object} element Element into which the ISD is rendered
+     * @param {?IMGResolver} imgResolver Resolve <pre>smpte:background</pre> URIs into URLs.
+     * @param {?number} eheight Height (in pixel) of the child <div>div</div> or null 
+     *                  to use clientHeight of the parent element
+     * @param {?number} ewidth Width (in pixel) of the child <div>div</div> or null
+     *                  to use clientWidth of the parent element
+     * @param {?boolean} displayForcedOnlyMode Value of the IMSC1 displayForcedOnlyMode parameter,
+     *                   or false if null         
+     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
+     * @param {Object} previousISDState State saved during processing of the previous ISD, or null if initial call
+     * @param {?boolean} enableRollUp Enables roll-up animations (see CEA 708)
+     * @return {Object} ISD state to be provided when this funtion is called for the next ISD
+     */
+
+    imscHTML.render = function (    isd,
+                                    element,
+                                    imgResolver,
+                                    eheight,
+                                    ewidth,
+                                    displayForcedOnlyMode,
+                                    errorHandler,
+                                    previousISDState,
+                                    enableRollUp
+                                ) {
+
+        /* maintain aspect ratio if specified */
+
+        var height = eheight || element.clientHeight;
+        var width = ewidth || element.clientWidth;
+
+        if (isd.aspectRatio !== null) {
+
+            var twidth = height * isd.aspectRatio;
+
+            if (twidth > width) {
+
+                height = Math.round(width / isd.aspectRatio);
+
+            } else {
+
+                width = twidth;
+
+            }
+
+        }
+
+        var rootcontainer = document.createElement("div");
+
+        rootcontainer.style.position = "relative";
+        rootcontainer.style.width = width + "px";
+        rootcontainer.style.height = height + "px";
+        rootcontainer.style.margin = "auto";
+        rootcontainer.style.top = 0;
+        rootcontainer.style.bottom = 0;
+        rootcontainer.style.left = 0;
+        rootcontainer.style.right = 0;
+        rootcontainer.style.zIndex = 0;
+
+        var context = {
+            h: height,
+            w: width,
+            regionH: null,
+            regionW: null,
+            imgResolver: imgResolver,
+            displayForcedOnlyMode: displayForcedOnlyMode || false,
+            isd: isd,
+            errorHandler: errorHandler,
+            previousISDState: previousISDState,
+            enableRollUp : enableRollUp || false,
+            currentISDState: {}
+        };
+
+        element.appendChild(rootcontainer);
+
+        for (var i in isd.contents) {
+
+            processElement(context, rootcontainer, isd.contents[i]);
+
+        }
+
+        return context.currentISDState;
+
+    };
+
+    function processElement(context, dom_parent, isd_element) {
+
+        var e;
+
+        if (isd_element.kind === 'region') {
+
+            e = document.createElement("div");
+            e.style.position = "absolute";
+
+        } else if (isd_element.kind === 'body') {
+
+            e = document.createElement("div");
+
+        } else if (isd_element.kind === 'div') {
+
+            e = document.createElement("div");
+
+        } else if (isd_element.kind === 'p') {
+
+            e = document.createElement("p");
+
+        } else if (isd_element.kind === 'span') {
+
+            e = document.createElement("span");
+
+            //e.textContent = isd_element.text;
+
+        } else if (isd_element.kind === 'br') {
+
+            e = document.createElement("br");
+
+        }
+
+        if (!e) {
+
+            reportError(context.errorHandler, "Error processing ISD element kind: " + isd_element.kind);
+
+            return;
+
+        }
+
+        /* override UA default margin */
+
+        e.style.margin = "0";
+
+        /* tranform TTML styles to CSS styles */
+
+        for (var i in STYLING_MAP_DEFS) {
+
+            var sm = STYLING_MAP_DEFS[i];
+
+            var attr = isd_element.styleAttrs[sm.qname];
+
+            if (attr !== undefined && sm.map !== null) {
+
+                sm.map(context, e, isd_element, attr);
+
+            }
+
+        }
+
+        var proc_e = e;
+
+
+        // handle multiRowAlign and linePadding
+
+        var mra = isd_element.styleAttrs[imscStyles.byName.multiRowAlign.qname];
+
+        if (mra && mra !== "auto") {
+
+            var s = document.createElement("span");
+
+            s.style.display = "inline-block";
+
+            s.style.textAlign = mra;
+
+            e.appendChild(s);
+
+            proc_e = s;
+
+            context.mra = mra;
+
+        }
+
+        var lp = isd_element.styleAttrs[imscStyles.byName.linePadding.qname];
+
+        if (lp && lp > 0) {
+
+            context.lp = lp;
+
+        }
+
+        // wrap characters in spans to find the line wrap locations
+
+        if (isd_element.kind === "span" && isd_element.text) {
+
+            if (context.lp || context.mra) {
+
+                for (var j = 0; j < isd_element.text.length; j++) {
+
+                    var span = document.createElement("span");
+
+                    span.textContent = isd_element.text.charAt(j);
+
+                    e.appendChild(span);
+
+                }
+
+            } else {
+                e.textContent = isd_element.text;
+            }
+        }
+
+
+        dom_parent.appendChild(e);
+
+        for (var k in isd_element.contents) {
+
+            processElement(context, proc_e, isd_element.contents[k]);
+
+        }
+
+        // handle linePadding and multiRowAlign
+
+        if ((context.lp || context.mra) && isd_element.kind === "p") {
+
+            var elist = [];
+
+            constructElementList(proc_e, elist, "red");
+
+            /* TODO: linePadding only supported for horizontal scripts */
+
+            processLinePaddingAndMultiRowAlign(elist, context.lp * context.h);
+
+            /* TODO: clean-up the spans ? */
+
+            if (context.lp)
+                delete context.lp;
+            if (context.mra)
+                delete context.mra;
+
+        }
+
+        /* region processing */
+
+        if (isd_element.kind === "region") {
+
+            /* build line list */
+
+            var linelist = [];
+
+            constructLineList(proc_e, linelist);
+
+            /* perform roll up if needed */
+            
+            var wdir = isd_element.styleAttrs[imscStyles.byName.writingMode.qname];
+
+            if ((wdir === "lrtb" || wdir === "lr" || wdir === "rltb" || wdir === "rl") &&
+                context.enableRollUp && 
+                isd_element.contents.length > 0 &&
+                isd_element.styleAttrs[imscStyles.byName.displayAlign.qname] === 'after') {
+
+                /* horrible hack, perhaps default region id should be underscore everywhere? */
+
+                var rid = isd_element.id === '' ? '_' : isd_element.id;
+
+                var rb = new RegionPBuffer(rid, linelist);
+
+                context.currentISDState[rb.id] = rb;
+
+                if (context.previousISDState &&
+                    rb.id in context.previousISDState &&
+                    context.previousISDState[rb.id].plist.length > 0 &&
+                    rb.plist.length > 1 &&
+                    rb.plist[rb.plist.length - 2].text ===
+                    context.previousISDState[rb.id].plist[context.previousISDState[rb.id].plist.length - 1].text) {
+
+                    var body_elem = e.firstElementChild;
+
+                    body_elem.style.bottom = "-" + rb.plist[rb.plist.length - 1].height + "px";
+                    body_elem.style.transition = "transform 0.4s";
+                    body_elem.style.position = "relative";
+                    body_elem.style.transform = "translateY(-" + rb.plist[rb.plist.length - 1].height + "px)";
+
+                }
+
+            }
+
+        }
+    }
+
+
+    function RegionPBuffer(id, lineList) {
+
+        this.id = id;
+
+        this.plist = lineList;
+
+    }
+
+    function pruneEmptySpans(element) {
+
+        var child = element.firstChild;
+
+        while (child) {
+
+            var nchild = child.nextSibling;
+
+            if (child.nodeType === Node.ELEMENT_NODE &&
+                child.localName === 'span') {
+
+                pruneEmptySpans(child);
+
+                if (child.childElementCount === 0 &&
+                    child.textContent.length === 0) {
+
+                    element.removeChild(child);
+
+                }
+            }
+
+            child = nchild;
+        }
+
+    }
+
+    function constructElementList(element, elist, bgcolor) {
+
+        if (element.childElementCount === 0) {
+
+            elist.push({
+                "element": element,
+                "bgcolor": bgcolor}
+            );
+
+        } else {
+
+            var newbgcolor = element.style.backgroundColor || bgcolor;
+
+            var child = element.firstChild;
+
+            while (child) {
+
+                if (child.nodeType === Node.ELEMENT_NODE) {
+
+                    constructElementList(child, elist, newbgcolor);
+
+                }
+
+                child = child.nextSibling;
+            }
+        }
+
+    }
+
+
+    function constructLineList(element, llist) {
+
+        if (element.childElementCount === 0 && element.localName === 'span') {
+
+            var r = element.getBoundingClientRect();
+
+            if (llist.length === 0 ||
+                (!isSameLine(r.top, r.height, llist[llist.length - 1].top, llist[llist.length - 1].height))
+                ) {
+
+                llist.push({
+                    top: r.top,
+                    height: r.height,
+                    text: element.textContent
+                });
+
+            } else {
+
+                if (r.top < llist[llist.length - 1].top) {
+                    llist[llist.length - 1].top = r.top;
+                }
+
+                if (r.height > llist[llist.length - 1].height) {
+                    llist[llist.length - 1].height = r.height;
+                }
+
+                llist[llist.length - 1].text += element.textContent;
+
+            }
+
+        } else {
+
+
+            var child = element.firstChild;
+
+            while (child) {
+
+                if (child.nodeType === Node.ELEMENT_NODE) {
+
+                    constructLineList(child, llist);
+
+                }
+
+                child = child.nextSibling;
+            }
+        }
+
+    }
+    
+    function isSameLine(top1, height1, top2, height2) {
+
+        return (((top1 + height1) < (top2 + height2)) && (top1 > top2)) || (((top2 + height2) <= (top1 + height1)) && (top2 >= top1));
+
+    }
+
+    function processLinePaddingAndMultiRowAlign(elist, lp) {
+
+        var line_head = null;
+
+        var lookingForHead = true;
+
+        var foundBR = false;
+
+        for (var i = 0; i <= elist.length; i++) {
+
+            /* skip <br> since they apparently have a different box top than
+             * the rest of the line 
+             */
+
+            if (i !== elist.length && elist[i].element.localName === "br") {
+                foundBR = true;
+                continue;
+            }
+
+            /* detect new line */
+
+            if (line_head === null ||
+                i === elist.length ||
+                (!isSameLine(elist[i].element.getBoundingClientRect().top,
+                    elist[i].element.getBoundingClientRect().height,
+                    elist[line_head].element.getBoundingClientRect().top,
+                    elist[line_head].element.getBoundingClientRect().height))
+                ) {
+
+                /* apply right padding to previous line (if applicable and unless this is the first line) */
+
+                if (lp && (!lookingForHead)) {
+
+                    for (; --i >= 0; ) {
+
+                        if (elist[i].element.getBoundingClientRect().width !== 0) {
+
+                            addRightPadding(elist[i].element, elist[i].color, lp);
+
+                            if (elist[i].element.getBoundingClientRect().width !== 0 &&
+                                isSameLine(elist[i].element.getBoundingClientRect().top,
+                                    elist[i].element.getBoundingClientRect().height,
+                                    elist[line_head].element.getBoundingClientRect().top,
+                                    elist[line_head].element.getBoundingClientRect().height))
+                                break;
+
+                            removeRightPadding(elist[i].element);
+
+                        }
+
+                    }
+
+                    lookingForHead = true;
+
+                    continue;
+
+                }
+
+                /* explicit <br> unless already present */
+
+                if (i !== elist.length && line_head !== null && (!foundBR)) {
+
+                    var br = document.createElement("br");
+
+                    elist[i].element.parentElement.insertBefore(br, elist[i].element);
+
+                    elist.splice(i, 0, {"element": br});
+
+                    foundBR = true;
+
+                    continue;
+
+                }
+
+                /* apply left padding to current line (if applicable) */
+
+                if (i !== elist.length && lp) {
+
+                    /* find first non-zero */
+
+                    for (; i < elist.length; i++) {
+
+                        if (elist[i].element.getBoundingClientRect().width !== 0) {
+                            addLeftPadding(elist[i].element, elist[i].color, lp);
+                            break;
+                        }
+
+                    }
+
+                }
+
+                lookingForHead = false;
+
+                foundBR = false;
+
+                line_head = i;
+
+            }
+
+        }
+
+    }
+
+    function addLeftPadding(e, c, lp) {
+        e.style.paddingLeft = lp + "px";
+        e.style.backgroundColor = c;
+    }
+
+    function addRightPadding(e, c, lp) {
+        e.style.paddingRight = lp + "px";
+        e.style.backgroundColor = c;
+
+    }
+
+    function removeRightPadding(e) {
+        e.style.paddingRight = null;
+    }
+
+
+    function HTMLStylingMapDefintion(qName, mapFunc) {
+        this.qname = qName;
+        this.map = mapFunc;
+    }
+
+    var STYLING_MAP_DEFS = [
+
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling backgroundColor",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.backgroundColor = "rgba(" +
+                    attr[0].toString() + "," +
+                    attr[1].toString() + "," +
+                    attr[2].toString() + "," +
+                    (attr[3] / 255).toString() +
+                    ")";
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling color",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.color = "rgba(" +
+                    attr[0].toString() + "," +
+                    attr[1].toString() + "," +
+                    attr[2].toString() + "," +
+                    (attr[3] / 255).toString() +
+                    ")";
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling direction",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.direction = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling display",
+            function (context, dom_element, isd_element, attr) {}
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling displayAlign",
+            function (context, dom_element, isd_element, attr) {
+
+                /* see https://css-tricks.com/snippets/css/a-guide-to-flexbox/ */
+
+                /* TODO: is this affected by writing direction? */
+
+                dom_element.style.display = "flex";
+                dom_element.style.flexDirection = "column";
+
+
+                if (attr === "before") {
+
+                    dom_element.style.justifyContent = "flex-start";
+
+                } else if (attr === "center") {
+
+                    dom_element.style.justifyContent = "center";
+
+                } else if (attr === "after") {
+
+                    dom_element.style.justifyContent = "flex-end";
+                }
+
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling extent",
+            function (context, dom_element, isd_element, attr) {
+                /* TODO: this is super ugly */
+
+                context.regionH = (attr.h * context.h);
+                context.regionW = (attr.w * context.w);
+
+                /* 
+                 * CSS height/width are measured against the content rectangle,
+                 * whereas TTML height/width include padding
+                 */
+
+                var hdelta = 0;
+                var wdelta = 0;
+
+                var p = isd_element.styleAttrs["http://www.w3.org/ns/ttml#styling padding"];
+
+                if (!p) {
+
+                    /* error */
+
+                } else {
+
+                    hdelta = (p[0] + p[2]) * context.h;
+                    wdelta = (p[1] + p[3]) * context.w;
+
+                }
+
+                dom_element.style.height = (context.regionH - hdelta) + "px";
+                dom_element.style.width = (context.regionW - wdelta) + "px";
+
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling fontFamily",
+            function (context, dom_element, isd_element, attr) {
+
+                var rslt = [];
+
+                /* per IMSC1 */
+
+                for (var i in attr) {
+
+                    if (attr[i] === "monospaceSerif") {
+
+                        rslt.push("Courier New");
+                        rslt.push('"Liberation Mono"');
+                        rslt.push("Courier");
+                        rslt.push("monospace");
+
+                    } else if (attr[i] === "proportionalSansSerif") {
+
+                        rslt.push("Arial");
+                        rslt.push("Helvetica");
+                        rslt.push('"Liberation Sans"');
+                        rslt.push("sans-serif");
+
+                    } else if (attr[i] === "monospace") {
+
+                        rslt.push("monospace");
+
+                    } else if (attr[i] === "sansSerif") {
+
+                        rslt.push("sans-serif");
+
+                    } else if (attr[i] === "serif") {
+
+                        rslt.push("serif");
+
+                    } else if (attr[i] === "monospaceSansSerif") {
+
+                        rslt.push("Consolas");
+                        rslt.push("monospace");
+
+                    } else if (attr[i] === "proportionalSerif") {
+
+                        rslt.push("serif");
+
+                    } else {
+
+                        rslt.push(attr[i]);
+
+                    }
+
+                }
+
+                dom_element.style.fontFamily = rslt.join(",");
+            }
+        ),
+
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling fontSize",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.fontSize = (attr * context.h) + "px";
+            }
+        ),
+
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling fontStyle",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.fontStyle = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling fontWeight",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.fontWeight = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling lineHeight",
+            function (context, dom_element, isd_element, attr) {
+                if (attr === "normal") {
+
+                    dom_element.style.lineHeight = "normal";
+
+                } else {
+
+                    dom_element.style.lineHeight = (attr * context.h) + "px";
+                }
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling opacity",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.opacity = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling origin",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.top = (attr.h * context.h) + "px";
+                dom_element.style.left = (attr.w * context.w) + "px";
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling overflow",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.overflow = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling padding",
+            function (context, dom_element, isd_element, attr) {
+
+                /* attr: top,left,bottom,right*/
+
+                /* style: top right bottom left*/
+
+                var rslt = [];
+
+                rslt[0] = (attr[0] * context.h) + "px";
+                rslt[1] = (attr[3] * context.w) + "px";
+                rslt[2] = (attr[2] * context.h) + "px";
+                rslt[3] = (attr[1] * context.w) + "px";
+
+                dom_element.style.padding = rslt.join(" ");
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling showBackground",
+            null
+            ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling textAlign",
+            function (context, dom_element, isd_element, attr) {
+
+                var ta;
+                var dir = isd_element.styleAttrs[imscStyles.byName.direction.qname];
+
+                /* handle UAs that do not understand start or end */
+
+                if (attr === "start") {
+
+                    ta = (dir === "rtl") ? "right" : "left";
+
+                } else if (attr === "end") {
+
+                    ta = (dir === "rtl") ? "left" : "right";
+
+                } else {
+
+                    ta = attr;
+
+                }
+
+                dom_element.style.textAlign = ta;
+
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling textDecoration",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.textDecoration = attr.join(" ").replace("lineThrough", "line-through");
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling textOutline",
+            function (context, dom_element, isd_element, attr) {
+
+                if (attr === "none") {
+
+                    dom_element.style.textShadow = "";
+
+                } else {
+
+                    dom_element.style.textShadow = "rgba(" +
+                        attr.color[0].toString() + "," +
+                        attr.color[1].toString() + "," +
+                        attr.color[2].toString() + "," +
+                        (attr.color[3] / 255).toString() +
+                        ")" + " 0px 0px " +
+                        (attr.thickness * context.h) + "px";
+
+                }
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling unicodeBidi",
+            function (context, dom_element, isd_element, attr) {
+
+                var ub;
+
+                if (attr === 'bidiOverride') {
+                    ub = "bidi-override";
+                } else {
+                    ub = attr;
+                }
+
+                dom_element.style.unicodeBidi = ub;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling visibility",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.visibility = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling wrapOption",
+            function (context, dom_element, isd_element, attr) {
+
+                if (attr === "wrap") {
+
+                    if (isd_element.space === "preserve") {
+                        dom_element.style.whiteSpace = "pre-wrap";
+                    } else {
+                        dom_element.style.whiteSpace = "normal";
+                    }
+
+                } else {
+
+                    if (isd_element.space === "preserve") {
+
+                        dom_element.style.whiteSpace = "pre";
+
+                    } else {
+                        dom_element.style.whiteSpace = "noWrap";
+                    }
+
+                }
+
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling writingMode",
+            function (context, dom_element, isd_element, attr) {
+                if (attr === "lrtb" || attr === "lr") {
+
+                    dom_element.style.writingMode = "horizontal-tb";
+
+                } else if (attr === "rltb" || attr === "rl") {
+
+                    dom_element.style.writingMode = "horizontal-tb";
+
+                } else if (attr === "tblr") {
+
+                    dom_element.style.writingMode = "vertical-lr";
+
+                } else if (attr === "tbrl" || attr === "tb") {
+
+                    dom_element.style.writingMode = "vertical-rl";
+
+                }
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml#styling zIndex",
+            function (context, dom_element, isd_element, attr) {
+                dom_element.style.zIndex = attr;
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.smpte-ra.org/schemas/2052-1/2010/smpte-tt backgroundImage",
+            function (context, dom_element, isd_element, attr) {
+
+                if (context.imgResolver !== null && attr !== null) {
+
+                    var img = document.createElement("img");
+
+                    var uri = context.imgResolver(attr, img);
+
+                    if (uri) img.src = uri;
+
+                    img.height = context.regionH;
+                    img.width = context.regionW;
+
+                    dom_element.appendChild(img);
+                }
+            }
+        ),
+        new HTMLStylingMapDefintion(
+            "http://www.w3.org/ns/ttml/profile/imsc1#styling forcedDisplay",
+            function (context, dom_element, isd_element, attr) {
+
+                if (context.displayForcedOnlyMode && attr === false) {
+                    dom_element.style.visibility = "hidden";
+                }
+
+            }
+        )
+    ];
+
+    var STYLMAP_BY_QNAME = {};
+
+    for (var i in STYLING_MAP_DEFS) {
+
+        STYLMAP_BY_QNAME[STYLING_MAP_DEFS[i].qname] = STYLING_MAP_DEFS[i];
+    }
+
+    function reportError(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.error && errorHandler.error(msg))
+            throw msg;
+
+    }
+
+})(typeof exports === 'undefined' ? this.imscHTML = {} : exports,
+    typeof imscNames === 'undefined' ? _dereq_(41) : imscNames,
+    typeof imscStyles === 'undefined' ? _dereq_(42) : imscStyles);
+},{"41":41,"42":42}],39:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscISD
+ */
+
+
+;
+(function (imscISD, imscNames, imscStyles) { // wrapper for non-node envs
+
+    /** 
+     * Creates a canonical representation of an IMSC1 document returned by <pre>imscDoc.fromXML()</pre>
+     * at a given absolute offset in seconds. This offset does not have to be one of the values returned
+     * by <pre>getMediaTimeEvents()</pre>.
+     * 
+     * @param {Object} tt IMSC1 document
+     * @param {number} offset Absolute offset (in seconds)
+     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
+     * @returns {Object} Opaque in-memory representation of an ISD
+     */
+
+    imscISD.generateISD = function (tt, offset, errorHandler) {
+
+        /* TODO check for tt and offset validity */
+
+        /* create the ISD object from the IMSC1 doc */
+
+        var isd = new ISD(tt);
+
+        /* process regions */
+
+        for (var r in tt.head.layout.regions) {
+
+            /* post-order traversal of the body tree per [construct intermediate document] */
+
+            var c = isdProcessContentElement(tt, offset, tt.head.layout.regions[r], tt.body, null, '', tt.head.layout.regions[r], errorHandler);
+
+            if (c !== null) {
+
+                /* add the region to the ISD */
+
+                isd.contents.push(c.element);
+            }
+
+
+        }
+
+        return isd;
+    };
+
+    function isdProcessContentElement(doc, offset, region, body, parent, inherited_region_id, elem, errorHandler) {
+
+        /* prune if temporally inactive */
+
+        if (offset < elem.begin || offset >= elem.end) return null;
+
+        /* 
+         * set the associated region as specified by the regionID attribute, or the 
+         * inherited associated region otherwise
+         */
+
+        var associated_region_id = 'regionID' in elem && elem.regionID !== '' ? elem.regionID : inherited_region_id;
+
+        /* prune the element if either:
+         * - the element is not terminal and the associated region is neither the default
+         *   region nor the parent region (this allows children to be associated with a 
+         *   region later on)
+         * - the element is terminal and the associated region is not the parent region
+         */
+        
+        /* TODO: improve detection of terminal elements since <region> has no contents */
+
+        if (parent !== null /* are we in the region element */ &&
+            associated_region_id !== region.id &&
+                (
+                    (! ('contents' in elem)) ||
+                    ('contents' in elem && elem.contents.length === 0) ||
+                    associated_region_id !== ''
+                )
+             )
+            return null;
+
+        /* create an ISD element, including applying specified styles */
+
+        var isd_element = new ISDContentElement(elem);
+
+        /* apply set (animation) styling */
+
+        for (var i in elem.sets) {
+
+            if (offset < elem.sets[i].begin || offset >= elem.sets[i].end)
+                continue;
+
+            isd_element.styleAttrs[elem.sets[i].qname] = elem.sets[i].value;
+
+        }
+
+        /* 
+         * keep track of specified styling attributes so that we
+         * can compute them later
+         */
+
+        var spec_attr = {};
+
+        for (var qname in isd_element.styleAttrs) {
+
+            spec_attr[qname] = true;
+
+            /* special rule for tts:writingMode (section 7.29.1 of XSL)
+             * direction is set consistently with writingMode only
+             * if writingMode sets inline-direction to LTR or RTL  
+             */
+
+            if (qname === imscStyles.byName.writingMode.qname &&
+                !(imscStyles.byName.direction.qname in isd_element.styleAttrs)) {
+
+                var wm = isd_element.styleAttrs[qname];
+
+                if (wm === "lrtb" || wm === "lr") {
+
+                    isd_element.styleAttrs[imscStyles.byName.direction.qname] = "ltr";
+
+                } else if (wm === "rltb" || wm === "rl") {
+
+                    isd_element.styleAttrs[imscStyles.byName.direction.qname] = "rtl";
+
+                }
+
+            }
+        }
+
+        /* inherited styling */
+
+        if (parent !== null) {
+
+            for (var j in imscStyles.all) {
+
+                var sa = imscStyles.all[j];
+
+                /* textDecoration has special inheritance rules */
+
+                if (sa.qname === imscStyles.byName.textDecoration.qname) {
+
+                    /* handle both textDecoration inheritance and specification */
+
+                    var ps = parent.styleAttrs[sa.qname];
+                    var es = isd_element.styleAttrs[sa.qname];
+                    var outs = [];
+
+                    if (es === undefined) {
+
+                        outs = ps;
+
+                    } else if (es.indexOf("none") === -1) {
+
+                        if ((es.indexOf("noUnderline") === -1 &&
+                            ps.indexOf("underline") !== -1) ||
+                            es.indexOf("underline") !== -1) {
+
+                            outs.push("underline");
+
+                        }
+
+                        if ((es.indexOf("noLineThrough") === -1 &&
+                            ps.indexOf("lineThrough") !== -1) ||
+                            es.indexOf("lineThrough") !== -1) {
+
+                            outs.push("lineThrough");
+
+                        }
+
+                        if ((es.indexOf("noOverline") === -1 &&
+                            ps.indexOf("overline") !== -1) ||
+                            es.indexOf("overline") !== -1) {
+
+                            outs.push("overline");
+
+                        }
+
+                    } else {
+
+                        outs.push("none");
+
+                    }
+
+                    isd_element.styleAttrs[sa.qname] = outs;
+
+                } else if (sa.inherit &&
+                    (sa.qname in parent.styleAttrs) &&
+                    !(sa.qname in isd_element.styleAttrs)) {
+
+                    isd_element.styleAttrs[sa.qname] = parent.styleAttrs[sa.qname];
+
+                }
+
+            }
+
+        }
+
+        /* initial value styling */
+
+        for (var k in imscStyles.all) {
+
+            var ivs = imscStyles.all[k];
+
+            /* skip if value is already specified */
+
+            if (ivs.qname in isd_element.styleAttrs) continue;
+
+            /* apply initial value to elements other than region only if non-inherited */
+
+            if (isd_element.kind === 'region' || (ivs.inherit === false && ivs.initial !== null)) {
+
+                isd_element.styleAttrs[ivs.qname] = ivs.parse(ivs.initial);
+
+                /* keep track of the style as specified */
+
+                spec_attr[ivs.qname] = true;
+
+            }
+
+        }
+
+        /* compute styles (only for non-inherited styles) */
+        /* TODO: get rid of spec_attr */
+
+        for (var z in imscStyles.all) {
+
+            var cs = imscStyles.all[z];
+
+            if (!(cs.qname in spec_attr)) continue;
+
+            if (cs.compute !== null) {
+
+                var cstyle = cs.compute(
+                    /*doc, parent, element, attr*/
+                    doc,
+                    parent,
+                    isd_element,
+                    isd_element.styleAttrs[cs.qname]
+                    );
+
+                if (cstyle !== null) {
+                    isd_element.styleAttrs[cs.qname] = cstyle;
+                } else {
+                    reportError(errorHandler, "Style '" + cs.qname + "' on element '" + isd_element.kind + "' cannot be computed");
+                }
+            }
+
+        }
+
+        /* prune if tts:display is none */
+
+        if (isd_element.styleAttrs[imscStyles.byName.display.qname] === "none")
+            return null;
+
+        /* process contents of the element */
+
+        var contents;
+
+        if (parent === null) {
+
+            /* we are processing the region */
+
+            if (body === null) {
+
+                /* if there is no body, still process the region but with empty content */
+
+                contents = [];
+
+            } else {
+
+                /*use the body element as contents */
+
+                contents = [body];
+
+            }
+
+        } else if ('contents' in elem) {
+
+            contents = elem.contents;
+
+        }
+
+        for (var x in contents) {
+
+            var c = isdProcessContentElement(doc, offset, region, body, isd_element, associated_region_id, contents[x]);
+
+            /* 
+             * keep child element only if they are non-null and their region match 
+             * the region of this element
+             */
+
+            if (c !== null) {
+
+                isd_element.contents.push(c.element);
+
+            }
+
+        }
+
+        /* compute used value of lineHeight="normal" */
+
+        /*        if (isd_element.styleAttrs[imscStyles.byName.lineHeight.qname] === "normal"  ) {
+         
+         isd_element.styleAttrs[imscStyles.byName.lineHeight.qname] =
+         isd_element.styleAttrs[imscStyles.byName.fontSize.qname] * 1.2;
+         
+         }
+         */
+
+        /* remove styles that are not applicable */
+
+        for (var qnameb in isd_element.styleAttrs) {
+            var da = imscStyles.byQName[qnameb];
+
+            if (da.applies.indexOf(isd_element.kind) === -1) {
+                delete isd_element.styleAttrs[qnameb];
+            }
+        }
+
+        /* collapse white space if space is "default" */
+
+        if (isd_element.kind === 'span' && isd_element.text && isd_element.space === "default") {
+
+            var trimmedspan = isd_element.text.replace(/\s+/g, ' ');
+
+            isd_element.text = trimmedspan;
+
+        }
+
+        /* trim whitespace around explicit line breaks */
+
+        if (isd_element.kind === 'p') {
+
+            var elist = [];
+
+            constructSpanList(isd_element, elist);
+
+            var l = 0;
+
+            var state = "after_br";
+            var br_pos = 0;
+
+            while (true) {
+
+                if (state === "after_br") {
+
+                    if (l >= elist.length || elist[l].kind === "br") {
+
+                        state = "before_br";
+                        br_pos = l;
+                        l--;
+
+                    } else {
+
+                        if (elist[l].space !== "preserve") {
+
+                            elist[l].text = elist[l].text.replace(/^\s+/g, '');
+
+                        }
+
+                        if (elist[l].text.length > 0) {
+
+                            state = "looking_br";
+                            l++;
+
+                        } else {
+
+                            elist.splice(l, 1);
+
+                        }
+
+                    }
+
+                } else if (state === "before_br") {
+
+                    if (l < 0 || elist[l].kind === "br") {
+
+                        state = "after_br";
+                        l = br_pos + 1;
+
+                        if (l >= elist.length) break;
+
+                    } else {
+
+                        if (elist[l].space !== "preserve") {
+
+                            elist[l].text = elist[l].text.replace(/\s+$/g, '');
+
+                        }
+
+                        if (elist[l].text.length > 0) {
+
+                            state = "after_br";
+                            l = br_pos + 1;
+
+                            if (l >= elist.length) break;
+
+                        } else {
+
+                            elist.splice(l, 1);
+                            l--;
+
+                        }
+
+                    }
+
+                } else {
+
+                    if (l >= elist.length || elist[l].kind === "br") {
+
+                        state = "before_br";
+                        br_pos = l;
+                        l--;
+
+                    } else {
+
+                        l++;
+
+                    }
+
+                }
+
+            }
+            
+            pruneEmptySpans(isd_element);
+
+        }
+
+        /* keep element if:
+         * * contains a background image
+         * * <br/>
+         * * if there are children
+         * * if <span> and has text
+         * * if region and showBackground = always
+         */
+
+        if ((isd_element.kind === 'div' && imscStyles.byName.backgroundImage.qname in isd_element.styleAttrs) ||
+            isd_element.kind === 'br' ||
+            ('contents' in isd_element && isd_element.contents.length > 0) ||
+            (isd_element.kind === 'span' && isd_element.text !== null) ||
+            (isd_element.kind === 'region' &&
+                isd_element.styleAttrs[imscStyles.byName.showBackground.qname] === 'always')) {
+
+            return {
+                region_id: associated_region_id,
+                element: isd_element
+            };
+        }
+
+        return null;
+    }
+
+    function constructSpanList(element, elist) {
+
+        if ('contents' in element) {
+
+            for (var i in element.contents) {
+                constructSpanList(element.contents[i], elist);
+            }
+
+        } else {
+
+            elist.push(element);
+
+        }
+
+    }
+
+    function pruneEmptySpans(element) {
+
+        if (element.kind === 'br') {
+            
+            return false;
+            
+        } else if ('text' in element) {
+            
+            return  element.text.length === 0;
+            
+        } else if ('contents' in element) {
+            
+            var i = element.contents.length;
+
+            while (i--) {
+                
+                if (pruneEmptySpans(element.contents[i])) {
+                    element.contents.splice(i, 1);
+                }
+                
+            }
+            
+            return element.contents.length === 0;
+
+        }
+    }
+
+    function ISD(tt) {
+        this.contents = [];
+        this.aspectRatio = tt.aspectRatio;
+    }
+
+    function ISDContentElement(ttelem) {
+
+        /* assume the element is a region if it does not have a kind */
+
+        this.kind = ttelem.kind || 'region';
+        
+        /* copy id */
+        
+        if (ttelem.id) {
+            this.id = ttelem.id;
+        }
+
+        /* deep copy of style attributes */
+        this.styleAttrs = {};
+
+        for (var sname in ttelem.styleAttrs) {
+
+            this.styleAttrs[sname] =
+                ttelem.styleAttrs[sname];
+        }
+
+        /* TODO: clean this! */
+
+        if ('text' in ttelem) {
+
+            this.text = ttelem.text;
+
+        } else if (ttelem.kind !== 'br') {
+            
+            this.contents = [];
+        }
+
+        if ('space' in ttelem) {
+
+            this.space = ttelem.space;
+        }
+    }
+
+
+    /*
+     * ERROR HANDLING UTILITY FUNCTIONS
+     * 
+     */
+
+    function reportInfo(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.info && errorHandler.info(msg))
+            throw msg;
+
+    }
+
+    function reportWarning(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.warn && errorHandler.warn(msg))
+            throw msg;
+
+    }
+
+    function reportError(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.error && errorHandler.error(msg))
+            throw msg;
+
+    }
+
+    function reportFatal(errorHandler, msg) {
+
+        if (errorHandler && errorHandler.fatal)
+            errorHandler.fatal(msg);
+
+        throw msg;
+
+    }
+
+
+})(typeof exports === 'undefined' ? this.imscISD = {} : exports,
+    typeof imscNames === 'undefined' ? _dereq_(41) : imscNames,
+    typeof imscStyles === 'undefined' ? _dereq_(42) : imscStyles
+    );
+
+},{"41":41,"42":42}],40:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+exports.generateISD = _dereq_(39).generateISD;
+exports.fromXML = _dereq_(37).fromXML;
+exports.renderHTML = _dereq_(38).render;
+},{"37":37,"38":38,"39":39}],41:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscNames
+ */
+
+;
+(function (imscNames) { // wrapper for non-node envs
+
+    imscNames.ns_tt = "http://www.w3.org/ns/ttml";
+    imscNames.ns_tts = "http://www.w3.org/ns/ttml#styling";
+    imscNames.ns_ttp = "http://www.w3.org/ns/ttml#parameter";
+    imscNames.ns_xml = "http://www.w3.org/XML/1998/namespace";
+    imscNames.ns_itts = "http://www.w3.org/ns/ttml/profile/imsc1#styling";
+    imscNames.ns_ittp = "http://www.w3.org/ns/ttml/profile/imsc1#parameter";
+    imscNames.ns_smpte = "http://www.smpte-ra.org/schemas/2052-1/2010/smpte-tt";
+    imscNames.ns_ebutts = "urn:ebu:tt:style";
+    
+})(typeof exports === 'undefined' ? this.imscNames = {} : exports);
+
+
+
+
+
+},{}],42:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscStyles
+ */
+
+;
+(function (imscStyles, imscNames, imscUtils) { // wrapper for non-node envs
+
+    function StylingAttributeDefinition(ns, name, initialValue, appliesTo, isInherit, isAnimatable, parseFunc, computeFunc) {
+        this.name = name;
+        this.ns = ns;
+        this.qname = ns + " " + name;
+        this.inherit = isInherit;
+        this.animatable = isAnimatable;
+        this.initial = initialValue;
+        this.applies = appliesTo;
+        this.parse = parseFunc;
+        this.compute = computeFunc;
+    }
+
+    imscStyles.all = [
+
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "backgroundColor",
+                "transparent",
+                ['body', 'div', 'p', 'region', 'span'],
+                false,
+                true,
+                imscUtils.parseColor,
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "color",
+                "white",
+                ['span'],
+                true,
+                true,
+                imscUtils.parseColor,
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "direction",
+                "ltr",
+                ['p', 'span'],
+                true,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "display",
+                "auto",
+                ['body', 'div', 'p', 'region', 'span'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "displayAlign",
+                "before",
+                ['region'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "extent",
+                "auto",
+                ['tt', 'region'],
+                false,
+                true,
+                function (str) {
+
+                    if (str === "auto") {
+
+                        return str;
+
+                    } else {
+
+                        var s = str.split(" ");
+                        if (s.length !== 2) return null;
+                        var w = imscUtils.parseLength(s[0]);
+                        var h = imscUtils.parseLength(s[1]);
+                        if (!h || !w) return null;
+                        return {'h': h, 'w': w};
+                    }
+
+                },
+                function (doc, parent, element, attr) {
+
+                    var h;
+                    var w;
+
+                    if (attr === "auto") {
+
+                        h = 1;
+
+                    } else if (attr.h.unit === "%") {
+
+                        h = attr.h.value / 100;
+
+                    } else if (attr.h.unit === "px") {
+
+                        h = attr.h.value / doc.pxDimensions.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    if (attr === "auto") {
+
+                        w = 1;
+
+                    } else if (attr.w.unit === "%") {
+
+                        w = attr.w.value / 100;
+
+                    } else if (attr.w.unit === "px") {
+
+                        w = attr.w.value / doc.pxDimensions.w;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    return {'h': h, 'w': w};
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "fontFamily",
+                "default",
+                ['span'],
+                true,
+                true,
+                function (str) {
+                    var ffs = str.split(",");
+                    var rslt = [];
+
+                    for (var i in ffs) {
+
+                        if (ffs[i].charAt(0) !== "'" && ffs[i].charAt(0) !== '"') {
+
+                            if (ffs[i] === "default") {
+
+                                /* per IMSC1 */
+
+                                rslt.push("monospaceSerif");
+
+                            } else {
+
+                                rslt.push(ffs[i]);
+
+                            }
+
+                        } else {
+
+                            rslt.push(ffs[i]);
+
+                        }
+
+                    }
+
+                    return rslt;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "fontSize",
+                "1c",
+                ['span'],
+                true,
+                true,
+                imscUtils.parseLength,
+                function (doc, parent, element, attr) {
+
+                    var fs;
+
+                    if (attr.unit === "%") {
+
+                        if (parent !== null) {
+
+                            fs = parent.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value / 100;
+
+                        } else {
+
+                            /* region, so percent of 1c */
+
+                            fs = attr.value / 100 / doc.cellResolution.h;
+
+                        }
+
+                    } else if (attr.unit === "em") {
+
+                        if (parent !== null) {
+
+                            fs = parent.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value;
+
+                        } else {
+
+                            /* region, so percent of 1c */
+
+                            fs = attr.value / doc.cellResolution.h;
+
+                        }
+
+                    } else if (attr.unit === "c") {
+
+                        fs = attr.value / doc.cellResolution.h;
+
+                    } else if (attr.unit === "px") {
+
+                        fs = attr.value / doc.pxDimensions.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    return fs;
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "fontStyle",
+                "normal",
+                ['span'],
+                true,
+                true,
+                function (str) {
+                    /* TODO: handle font style */
+
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "fontWeight",
+                "normal",
+                ['span'],
+                true,
+                true,
+                function (str) {
+                    /* TODO: handle font weight */
+
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "lineHeight",
+                "normal",
+                ['p'],
+                true,
+                true,
+                function (str) {
+                    if (str === "normal") {
+                        return str;
+                    } else {
+                        return imscUtils.parseLength(str);
+                    }
+                },
+                function (doc, parent, element, attr) {
+
+                    var lh;
+
+                    if (attr === "normal") {
+
+                        /* inherit normal per https://github.com/w3c/ttml1/issues/220 */
+
+                        lh = attr;
+
+                    } else if (attr.unit === "%") {
+
+                        lh = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value / 100;
+
+                    } else if (attr.unit === "em") {
+
+                        lh = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value;
+
+                    } else if (attr.unit === "c") {
+
+                        lh = attr.value / doc.cellResolution.h;
+
+                    } else if (attr.unit === "px") {
+
+                        /* TODO: handle error if no px dimensions are provided */
+
+                        lh = attr.value / doc.pxDimensions.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    /* TODO: create a Length constructor */
+
+                    return lh;
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "opacity",
+                1.0,
+                ['region'],
+                false,
+                true,
+                parseFloat,
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "origin",
+                "auto",
+                ['region'],
+                false,
+                true,
+                function (str) {
+
+                    if (str === "auto") {
+
+                        return str;
+
+                    } else {
+
+                        var s = str.split(" ");
+                        if (s.length !== 2) return null;
+                        var w = imscUtils.parseLength(s[0]);
+                        var h = imscUtils.parseLength(s[1]);
+                        if (!h || !w) return null;
+                        return {'h': h, 'w': w};
+                    }
+
+                },
+                function (doc, parent, element, attr) {
+
+                    var h;
+                    var w;
+
+                    if (attr === "auto") {
+
+                        h = 0;
+
+                    } else if (attr.h.unit === "%") {
+
+                        h = attr.h.value / 100;
+
+                    } else if (attr.h.unit === "px") {
+
+                        h = attr.h.value / doc.pxDimensions.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    if (attr === "auto") {
+
+                        w = 0;
+
+                    } else if (attr.w.unit === "%") {
+
+                        w = attr.w.value / 100;
+
+                    } else if (attr.w.unit === "px") {
+
+                        w = attr.w.value / doc.pxDimensions.w;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    return {'h': h, 'w': w};
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "overflow",
+                "hidden",
+                ['region'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "padding",
+                "0px",
+                ['region'],
+                false,
+                true,
+                function (str) {
+
+                    var s = str.split(" ");
+                    if (s.length > 4) return null;
+                    var r = [];
+                    for (var i in s) {
+
+                        var l = imscUtils.parseLength(s[i]);
+                        if (!l) return null;
+                        r.push(l);
+                    }
+
+                    return r;
+                },
+                function (doc, parent, element, attr) {
+
+                    var padding;
+
+                    /* TODO: make sure we are in region */
+
+                    /*
+                     * expand padding shortcuts to 
+                     * [before, end, after, start]
+                     * 
+                     */
+
+                    if (attr.length === 1) {
+
+                        padding = [attr[0], attr[0], attr[0], attr[0]];
+
+                    } else if (attr.length === 2) {
+
+                        padding = [attr[0], attr[1], attr[0], attr[1]];
+
+                    } else if (attr.length === 3) {
+
+                        padding = [attr[0], attr[1], attr[2], attr[1]];
+
+                    } else if (attr.length === 4) {
+
+                        padding = [attr[0], attr[1], attr[2], attr[3]];
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    /* TODO: take into account tts:direction */
+
+                    /* 
+                     * transform [before, end, after, start] according to writingMode to 
+                     * [top,left,bottom,right]
+                     * 
+                     */
+
+                    var dir = element.styleAttrs[imscStyles.byName.writingMode.qname];
+
+                    if (dir === "lrtb" || dir === "lr") {
+
+                        padding = [padding[0], padding[3], padding[2], padding[1]];
+
+                    } else if (dir === "rltb" || dir === "rl") {
+
+                        padding = [padding[0], padding[1], padding[2], padding[3]];
+
+                    } else if (dir === "tblr") {
+
+                        padding = [padding[3], padding[0], padding[1], padding[2]];
+
+                    } else if (dir === "tbrl" || dir === "tb") {
+
+                        padding = [padding[3], padding[2], padding[1], padding[0]];
+
+                    } else {
+
+                        return null;
+
+                    }
+
+                    var out = [];
+
+                    for (var i in padding) {
+
+                        if (padding[i].value === 0) {
+
+                            out[i] = 0;
+
+                        } else if (padding[i].unit === "%") {
+
+                            if (i === "0" || i === "2") {
+
+                                out[i] = element.styleAttrs[imscStyles.byName.extent.qname].h * padding[i].value / 100;
+
+                            } else {
+
+                                out[i] = element.styleAttrs[imscStyles.byName.extent.qname].w * padding[i].value / 100;
+                            }
+
+                        } else if (padding[i].unit === "em") {
+
+                            out[i] = element.styleAttrs[imscStyles.byName.fontSize.qname] * padding[i].value;
+
+                        } else if (padding[i].unit === "c") {
+
+                            out[i] = padding[i].value / doc.cellResolution.h;
+
+                        } else if (padding[i].unit === "px") {
+
+                            out[i] = padding[i].value / doc.pxDimensions.h;
+
+                        } else {
+
+                            return null;
+
+                        }
+                    }
+
+
+                    return out;
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "showBackground",
+                "always",
+                ['region'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "textAlign",
+                "start",
+                ['p'],
+                true,
+                true,
+                function (str) {
+                    return str;
+                },
+                function (doc, parent, element, attr) {
+                    
+                    /* Section 7.16.9 of XSL */
+                    
+                    if (attr === "left") {
+                        
+                        return "start";
+                        
+                    } else if (attr === "right") {
+                        
+                        return "end";
+                        
+                    } else {
+                        
+                        return attr;
+                        
+                    }
+                }
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "textDecoration",
+                "none",
+                ['span'],
+                true,
+                true,
+                function (str) {
+                    return str.split(" ");
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "textOutline",
+                "none",
+                ['span'],
+                true,
+                true,
+                function (str) {
+
+                    /*
+                     * returns {c: <color>?, thichness: <length>} | "none"
+                     * 
+                     */
+
+                    if (str === "none") {
+
+                        return str;
+
+                    } else {
+
+                        var r = {};
+                        var s = str.split(" ");
+                        if (s.length === 0 || s.length > 2) return null;
+                        var c = imscUtils.parseColor(s[0]);
+                       
+                        r.color = c;
+                        
+                        if (c !== null) s.shift();
+
+                        if (s.length !== 1) return null;
+
+                        var l = imscUtils.parseLength(s[0]);
+
+                        if (!l) return null;
+
+                        r.thickness = l;
+
+                        return r;
+                    }
+
+                },
+                function (doc, parent, element, attr) {
+
+                    /*
+                     * returns {color: <color>, thickness: <norm length>}
+                     * 
+                     */
+
+                    if (attr === "none") return attr;
+
+                    var rslt = {};
+
+                    if (attr.color === null) {
+                        
+                        rslt.color = element.styleAttrs[imscStyles.byName.color.qname];
+                        
+                    } else {
+                        
+                        rslt.color = attr.color;
+
+                    }
+
+                    if (attr.thickness.unit === "%") {
+
+                        rslt.thickness = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.thickness.value / 100;
+
+                    } else if (attr.thickness.unit === "em") {
+
+                        rslt.thickness = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.thickness.value;
+
+                    } else if (attr.thickness.unit === "c") {
+
+                        rslt.thickness = attr.thickness.value / doc.cellResolution.h;
+
+                    } else if (attr.thickness.unit === "px") {
+
+                        rslt.thickness = attr.thickness.value / doc.pxDimensions.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+
+
+                    return rslt;
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "unicodeBidi",
+                "normal",
+                ['span', 'p'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "visibility",
+                "visible",
+                ['body', 'div', 'p', 'region', 'span'],
+                true,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "wrapOption",
+                "wrap",
+                ['span'],
+                true,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "writingMode",
+                "lrtb",
+                ['region'],
+                false,
+                true,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_tts,
+                "zIndex",
+                "auto",
+                ['region'],
+                false,
+                true,
+                function (str) {
+                    
+                    var rslt;
+                    
+                    if (str === 'auto') {
+                        
+                        rslt = str;
+                        
+                    } else {
+                        
+                        rslt = parseInt(str);
+                        
+                        if (isNaN(rslt)) {
+                            rslt = null;
+                        }
+                        
+                    }
+                    
+                    return rslt;
+                },
+                null
+                ),
+        new StylingAttributeDefinition(
+                imscNames.ns_ebutts,
+                "linePadding",
+                "0c",
+                ['p'],
+                true,
+                false,
+                imscUtils.parseLength,
+                function (doc, parent, element, attr) {
+                    if (attr.unit === "c") {
+
+                        return attr.value / doc.cellResolution.h;
+
+                    } else {
+
+                        return null;
+
+                    }
+                }
+        ),
+        new StylingAttributeDefinition(
+                imscNames.ns_ebutts,
+                "multiRowAlign",
+                "auto",
+                ['p'],
+                true,
+                false,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+
+        new StylingAttributeDefinition(
+                imscNames.ns_smpte,
+                "backgroundImage",
+                null,
+                ['div'],
+                false,
+                false,
+                function (str) {
+                    return str;
+                },
+                null
+                ),
+
+        new StylingAttributeDefinition(
+                imscNames.ns_itts,
+                "forcedDisplay",
+                "false",
+                ['body', 'div', 'p', 'region', 'span'],
+                true,
+                true,
+                function (str) {
+                    return str === 'true' ? true : false;
+                },
+                null
+                )
+    ];
+
+    /* TODO: allow null parse function */
+
+    imscStyles.byQName = {};
+    for (var i in imscStyles.all) {
+
+        imscStyles.byQName[imscStyles.all[i].qname] = imscStyles.all[i];
+    }
+
+    imscStyles.byName = {};
+    for (var j in imscStyles.all) {
+
+        imscStyles.byName[imscStyles.all[j].name] = imscStyles.all[j];
+    }
+
+})(typeof exports === 'undefined' ? this.imscStyles = {} : exports,
+        typeof imscNames === 'undefined' ? _dereq_(41) : imscNames,
+        typeof imscUtils === 'undefined' ? _dereq_(43) : imscUtils);
+
+},{"41":41,"43":43}],43:[function(_dereq_,module,exports){
+/* 
+ * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ * * Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ * * Redistributions in binary form must reproduce the above copyright notice,
+ *   this list of conditions and the following disclaimer in the documentation
+ *   and/or other materials provided with the distribution.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+/**
+ * @module imscUtils
+ */
+
+;
+(function (imscUtils) { // wrapper for non-node envs
+    
+    /* Documents the error handler interface */
+    
+    /**
+     * @classdesc Generic interface for handling events. The interface exposes four
+     * methods:
+     * * <pre>info</pre>: unusual event that does not result in an inconsistent state
+     * * <pre>warn</pre>: unexpected event that should not result in an inconsistent state
+     * * <pre>error</pre>: unexpected event that may result in an inconsistent state
+     * * <pre>fatal</pre>: unexpected event that results in an inconsistent state
+     *   and termination of processing
+     * Each method takes a single <pre>string</pre> describing the event as argument,
+     * and returns a single <pre>boolean</pre>, which terminates processing if <pre>true</pre>.
+     *
+     * @name ErrorHandler
+     * @class
+     */
+
+
+    /*
+     * Parses a TTML color expression
+     * 
+     */
+
+    var HEX_COLOR_RE = /#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})?/;
+    var DEC_COLOR_RE = /rgb\((\d+),(\d+),(\d+)\)/;
+    var DEC_COLORA_RE = /rgba\((\d+),(\d+),(\d+),(\d+)\)/;
+    var NAMED_COLOR = {
+        transparent: [0, 0, 0, 0],
+        black: [0, 0, 0, 255],
+        silver: [192, 192, 192, 255],
+        gray: [128, 128, 128, 255],
+        white: [255, 255, 255, 255],
+        maroon: [128, 0, 0, 255],
+        red: [255, 0, 0, 255],
+        purple: [128, 0, 128, 255],
+        fuchsia: [255, 0, 255, 255],
+        magenta: [255, 0, 255, 255],
+        green: [0, 128, 0, 255],
+        lime: [0, 255, 0, 255],
+        olive: [128, 128, 0, 255],
+        yellow: [255, 255, 0, 255],
+        navy: [0, 0, 128, 255],
+        blue: [0, 0, 255, 255],
+        teal: [0, 128, 128, 255],
+        aqua: [0, 255, 255, 255],
+        cyan: [0, 255, 255, 255]
+    };
+
+    imscUtils.parseColor = function (str) {
+
+        var m;
+        var r = null;
+        if (str in NAMED_COLOR) {
+
+            r = NAMED_COLOR[str];
+
+        } else if ((m = HEX_COLOR_RE.exec(str)) !== null) {
+
+            r = [parseInt(m[1], 16),
+                parseInt(m[2], 16),
+                parseInt(m[3], 16),
+                (m[4] !== undefined ? parseInt(m[4], 16) : 255)];
+        } else if ((m = DEC_COLOR_RE.exec(str)) !== null) {
+
+            r = [parseInt(m[1]),
+                parseInt(m[2]),
+                parseInt(m[3]),
+                255];
+        } else if ((m = DEC_COLORA_RE.exec(str)) !== null) {
+
+            r = [parseInt(m[1]),
+                parseInt(m[2]),
+                parseInt(m[3]),
+                parseInt(m[4])];
+        }
+
+        return r;
+    };
+
+    var LENGTH_RE = /^((?:\+|\-)?\d*(?:\.\d+)?)(px|em|c|%)$/;
+
+    imscUtils.parseLength = function (str) {
+
+        var m;
+
+        var r = null;
+
+        if ((m = LENGTH_RE.exec(str)) !== null) {
+
+            r = {value: parseFloat(m[1]), unit: m[2]};
+        }
+
+        return r;
+    };
+
+})(typeof exports === 'undefined' ? this.imscUtils = {} : exports);
+
+},{}],44:[function(_dereq_,module,exports){
 (function (Buffer){
 ;(function (sax) { // wrapper for non-node envs
   sax.parser = function (strict, opt) { return new SAXParser(strict, opt) }
@@ -8304,7 +13181,7 @@ function base64DetectIncompleteChar(buffer) {
 
   var Stream
   try {
-    Stream = _dereq_(32).Stream
+    Stream = _dereq_(34).Stream
   } catch (ex) {
     Stream = function () {}
   }
@@ -8374,7 +13251,7 @@ function base64DetectIncompleteChar(buffer) {
       typeof Buffer.isBuffer === 'function' &&
       Buffer.isBuffer(data)) {
       if (!this._decoder) {
-        var SD = _dereq_(33).StringDecoder
+        var SD = _dereq_(35).StringDecoder
         this._decoder = new SD('utf8')
       }
       data = this._decoder.write(data)
@@ -9719,4587 +14596,9 @@ function base64DetectIncompleteChar(buffer) {
   }
 })(typeof exports === 'undefined' ? this.sax = {} : exports)
 
-}).call(this,_dereq_(8).Buffer)
+}).call(this,_dereq_(9).Buffer)
 
-},{"32":32,"33":33,"8":8}],35:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscDoc
- */
-
-;
-(function (imscDoc, sax, imscNames, imscStyles, imscUtils) {
-
-
-    /**
-     * Allows a client to provide callbacks to handle children of the <metadata> element
-     * @typedef {Object} MetadataHandler
-     * @property {?OpenTagCallBack} onOpenTag
-     * @property {?CloseTagCallBack} onCloseTag
-     * @property {?TextCallBack} onText
-     */
-
-    /**
-     * Called when the opening tag of an element node is encountered.
-     * @callback OpenTagCallBack
-     * @param {string} ns Namespace URI of the element
-     * @param {string} name Local name of the element
-     * @param {Object[]} attributes List of attributes, each consisting of a
-     *                              `uri`, `name` and `value`
-     */
-
-    /**
-     * Called when the closing tag of an element node is encountered.
-     * @callback CloseTagCallBack
-     */
-
-    /**
-     * Called when a text node is encountered.
-     * @callback TextCallBack
-     * @param {string} contents Contents of the text node
-     */
-
-    /**
-     * Parses an IMSC1 document into an opaque in-memory representation that exposes
-     * a single method <pre>getMediaTimeEvents()</pre> that returns a list of time
-     * offsets (in seconds) of the ISD, i.e. the points in time where the visual
-     * representation of the document change. `metadataHandler` allows the caller to
-     * be called back when nodes are present in <metadata> elements. 
-     * 
-     * @param {string} xmlstring XML document
-     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
-     * @param {?MetadataHandler} metadataHandler Callback for <Metadata> elements
-     * @returns {Object} Opaque in-memory representation of an IMSC1 document
-     */
-
-    imscDoc.fromXML = function (xmlstring, errorHandler, metadataHandler) {
-        var p = sax.parser(true, {xmlns: true});
-        var estack = [];
-        var xmllangstack = [];
-        var xmlspacestack = [];
-        var metadata_depth = 0;
-        var doc = null;
-
-        p.onclosetag = function (node) {
-
-            if (estack[0] instanceof Styling) {
-
-                /* flatten chained referential styling */
-
-                for (var sid in estack[0].styles) {
-
-                    mergeChainedStyles(estack[0], estack[0].styles[sid], errorHandler);
-
-                }
-
-            } else if (estack[0] instanceof P || estack[0] instanceof Span) {
-
-                /* merge anonymous spans */
-
-                if (estack[0].contents.length > 1) {
-
-                    var cs = [estack[0].contents[0]];
-
-                    var c;
-
-                    for (c = 1; c < estack[0].contents.length; c++) {
-
-                        if (estack[0].contents[c] instanceof AnonymousSpan &&
-                                cs[cs.length - 1] instanceof AnonymousSpan) {
-
-                            cs[cs.length - 1].text += estack[0].contents[c].text;
-
-                        } else {
-
-                            cs.push(estack[0].contents[c]);
-
-                        }
-
-                    }
-
-                    estack[0].contents = cs;
-
-                }
-
-                // remove redundant nested anonymous spans (9.3.3(1)(c))
-
-                if (estack[0] instanceof Span &&
-                        estack[0].contents.length === 1 &&
-                        estack[0].contents[0] instanceof AnonymousSpan) {
-
-                    estack[0].text = estack[0].contents[0].text;
-                    delete estack[0].contents;
-
-                }
-
-            } else if (estack[0] instanceof ForeignElement) {
-
-                if (estack[0].node.uri === imscNames.ns_tt &&
-                        estack[0].node.local === 'metadata') {
-
-                    /* leave the metadata element */
-
-                    metadata_depth--;
-
-                } else if (metadata_depth > 0 &&
-                        metadataHandler &&
-                        'onCloseTag' in metadataHandler) {
-
-                    /* end of child of metadata element */
-
-                    metadataHandler.onCloseTag();
-
-                }
-
-            }
-
-            // TODO: delete stylerefs?
-
-            // maintain the xml:space stack
-
-            xmlspacestack.shift();
-
-            // maintain the xml:lang stack
-
-            xmllangstack.shift();
-
-            // prepare for the next element
-
-            estack.shift();
-        };
-
-        p.ontext = function (str) {
-
-            if (estack[0] === undefined) {
-
-                /* ignoring text outside of elements */
-
-            } else if (estack[0] instanceof Span || estack[0] instanceof P) {
-
-                /* create an anonymous span */
-
-                var s = new AnonymousSpan();
-
-                s.initFromText(doc, estack[0], str, xmlspacestack[0], errorHandler);
-
-                estack[0].contents.push(s);
-
-            } else if (estack[0] instanceof ForeignElement &&
-                    metadata_depth > 0 &&
-                    metadataHandler &&
-                    'onText' in metadataHandler) {
-
-                /* text node within a child of metadata element */
-
-                metadataHandler.onText(str);
-
-            }
-
-        };
-
-
-        p.onopentag = function (node) {
-
-            // maintain the xml:space stack
-
-            var xmlspace = node.attributes["xml:space"];
-
-            if (xmlspace) {
-
-                xmlspacestack.unshift(xmlspace.value);
-
-            } else {
-
-                if (xmlspacestack.length === 0) {
-
-                    xmlspacestack.unshift("default");
-
-                } else {
-
-                    xmlspacestack.unshift(xmlspacestack[0]);
-
-                }
-
-            }
-
-            /* maintain the xml:lang stack */
-
-
-            var xmllang = node.attributes["xml:lang"];
-
-            if (xmllang) {
-
-                xmllangstack.unshift(xmllang.value);
-
-            } else {
-
-                if (xmllangstack.length === 0) {
-
-                    xmllangstack.unshift("");
-
-                } else {
-
-                    xmllangstack.unshift(xmllangstack[0]);
-
-                }
-
-            }
-
-
-            /* process the element */
-
-            if (node.uri === imscNames.ns_tt) {
-
-                if (node.local === 'tt') {
-
-                    if (doc !== null) {
-
-                        reportFatal(errorHandler, "Two <tt> elements at (" + this.line + "," + this.column + ")");
-
-                    }
-
-                    doc = new TT();
-
-                    doc.initFromNode(node, errorHandler);
-
-                    estack.unshift(doc);
-
-                } else if (node.local === 'head') {
-
-                    if (!(estack[0] instanceof TT)) {
-                        reportFatal(errorHandler, "Parent of <head> element is not <tt> at (" + this.line + "," + this.column + ")");
-                    }
-
-                    if (doc.head !== null) {
-                        reportFatal("Second <head> element at (" + this.line + "," + this.column + ")");
-                    }
-
-                    doc.head = new Head();
-
-                    estack.unshift(doc.head);
-
-                } else if (node.local === 'styling') {
-
-                    if (!(estack[0] instanceof Head)) {
-                        reportFatal(errorHandler, "Parent of <styling> element is not <head> at (" + this.line + "," + this.column + ")");
-                    }
-
-                    if (doc.head.styling !== null) {
-                        reportFatal("Second <styling> element at (" + this.line + "," + this.column + ")");
-                    }
-
-                    doc.head.styling = new Styling();
-
-                    estack.unshift(doc.head.styling);
-
-                } else if (node.local === 'style') {
-
-                    var s;
-
-                    if (estack[0] instanceof Styling) {
-
-                        s = new Style();
-
-                        s.initFromNode(node, errorHandler);
-
-                        /* ignore <style> element missing @id */
-
-                        if (!s.id) {
-
-                            reportError(errorHandler, "<style> element missing @id attribute");
-
-                        } else {
-
-                            doc.head.styling.styles[s.id] = s;
-
-                        }
-
-                        estack.unshift(s);
-
-                    } else if (estack[0] instanceof Region) {
-
-                        /* nested styles can be merged with specified styles
-                         * immediately, with lower priority
-                         * (see 8.4.4.2(3) at TTML1 )
-                         */
-
-                        s = new Style();
-
-                        s.initFromNode(node, errorHandler);
-
-                        mergeStylesIfNotPresent(s.styleAttrs, estack[0].styleAttrs);
-
-                        estack.unshift(s);
-
-                    } else {
-
-                        reportFatal(errorHandler, "Parent of <style> element is not <styling> or <region> at (" + this.line + "," + this.column + ")");
-
-                    }
-
-                } else if (node.local === 'layout') {
-
-                    if (!(estack[0] instanceof Head)) {
-
-                        reportFatal(errorHandler, "Parent of <layout> element is not <head> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    if (doc.head.layout !== null) {
-
-                        reportFatal(errorHandler, "Second <layout> element at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    doc.head.layout = new Layout();
-
-                    estack.unshift(doc.head.layout);
-
-                } else if (node.local === 'region') {
-
-                    if (!(estack[0] instanceof Layout)) {
-                        reportFatal(errorHandler, "Parent of <region> element is not <layout> at " + this.line + "," + this.column + ")");
-                    }
-
-                    var r = new Region();
-
-                    r.initFromNode(doc, node, errorHandler);
-
-                    if (!r.id || r.id in doc.head.layout.regions) {
-
-                        reportError(errorHandler, "Ignoring <region> with duplicate or missing @id at " + this.line + "," + this.column + ")");
-
-                    } else {
-
-                        doc.head.layout.regions[r.id] = r;
-
-                    }
-
-                    estack.unshift(r);
-
-                } else if (node.local === 'body') {
-
-                    if (!(estack[0] instanceof TT)) {
-
-                        reportFatal(errorHandler, "Parent of <body> element is not <tt> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    if (doc.body !== null) {
-
-                        reportFatal(errorHandler, "Second <body> element at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var b = new Body();
-
-                    b.initFromNode(doc, node, errorHandler);
-
-                    doc.body = b;
-
-                    estack.unshift(b);
-
-                } else if (node.local === 'div') {
-
-                    if (!(estack[0] instanceof Div || estack[0] instanceof Body)) {
-
-                        reportFatal(errorHandler, "Parent of <div> element is not <body> or <div> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var d = new Div();
-
-                    d.initFromNode(doc, estack[0], node, errorHandler);
-
-                    estack[0].contents.push(d);
-
-                    estack.unshift(d);
-
-                } else if (node.local === 'p') {
-
-                    if (!(estack[0] instanceof Div)) {
-
-                        reportFatal(errorHandler, "Parent of <p> element is not <div> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var p = new P();
-
-                    p.initFromNode(doc, estack[0], node, errorHandler);
-
-                    estack[0].contents.push(p);
-
-                    estack.unshift(p);
-
-                } else if (node.local === 'span') {
-
-                    if (!(estack[0] instanceof Span || estack[0] instanceof P)) {
-
-                        reportFatal(errorHandler, "Parent of <span> element is not <span> or <p> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var ns = new Span();
-
-                    ns.initFromNode(doc, estack[0], node, xmlspacestack[0], errorHandler);
-
-                    estack[0].contents.push(ns);
-
-                    estack.unshift(ns);
-
-                } else if (node.local === 'br') {
-
-                    if (!(estack[0] instanceof Span || estack[0] instanceof P)) {
-
-                        reportFatal(errorHandler, "Parent of <br> element is not <span> or <p> at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var nb = new Br();
-
-                    nb.initFromNode(doc, estack[0], node, errorHandler);
-
-                    estack[0].contents.push(nb);
-
-                    estack.unshift(nb);
-
-                } else if (node.local === 'set') {
-
-                    if (!(estack[0] instanceof Span ||
-                            estack[0] instanceof P ||
-                            estack[0] instanceof Div ||
-                            estack[0] instanceof Body ||
-                            estack[0] instanceof Region ||
-                            estack[0] instanceof Br)) {
-
-                        reportFatal(errorHandler, "Parent of <set> element is not a content element or a region at " + this.line + "," + this.column + ")");
-
-                    }
-
-                    var st = new Set();
-
-                    st.initFromNode(doc, estack[0], node, errorHandler);
-
-                    estack[0].sets.push(st);
-
-                    estack.unshift(st);
-
-                } else {
-
-                    /* element in the TT namespace, but not a content element */
-
-                    estack.unshift(new ForeignElement(node));
-                }
-
-            } else {
-
-                /* ignore elements not in the TTML namespace unless in metadata element */
-
-                estack.unshift(new ForeignElement(node));
-
-            }
-
-            /* handle metadata callbacks */
-
-            if (estack[0] instanceof ForeignElement) {
-
-                if (node.uri === imscNames.ns_tt &&
-                        node.local === 'metadata') {
-
-                    /* enter the metadata element */
-
-                    metadata_depth++;
-
-                } else if (
-                        metadata_depth > 0 &&
-                        metadataHandler &&
-                        'onOpenTag' in metadataHandler
-                        ) {
-
-                    /* start of child of metadata element */
-
-                    var attrs = [];
-
-                    for (var a in node.attributes) {
-                        attrs[node.attributes[a].uri + " " + node.attributes[a].local] =
-                                {
-                                    uri: node.attributes[a].uri,
-                                    local: node.attributes[a].local,
-                                    value: node.attributes[a].value
-                                };
-                    }
-
-                    metadataHandler.onOpenTag(node.uri, node.local, attrs);
-
-                }
-
-            }
-
-        };
-
-        // parse the document
-
-        p.write(xmlstring).close();
-
-        // all referential styling has been flatten, so delete the styling elements if there is a head
-        // otherwise create an empty head
-
-        if (doc.head !== null) {
-            delete doc.head.styling;
-        } else {
-            doc.head = new Head();
-        }
-
-        // create default region if no regions specified
-
-        if (doc.head.layout === null) {
-
-            doc.head.layout = new Layout();
-
-        }
-
-        var hasRegions = false;
-
-        /* AFAIK the only way to determine whether an object has members */
-
-        for (var i in doc.head.layout.regions) {
-
-            hasRegions = true;
-
-            break;
-
-        }
-
-        if (!hasRegions) {
-
-            /* create default region */
-
-            var dr = Region.prototype.createDefaultRegion();
-
-            doc.head.layout.regions[dr.id] = dr;
-
-        }
-
-        /* resolve desired timing for regions */
-
-        for (var region_i in doc.head.layout.regions) {
-
-            resolveTiming(doc, doc.head.layout.regions[region_i], null, null);
-
-        }
-
-        /* resolve desired timing for content elements */
-
-        if (doc.body) {
-            resolveTiming(doc, doc.body, null, null);
-        }
-
-        return doc;
-    };
-
-    function resolveTiming(doc, element, prev_sibling, parent) {
-
-        /* are we in a seq container? */
-
-        var isinseq = parent && parent.timeContainer === "seq";
-
-        /* determine implicit begin */
-
-        var implicit_begin = 0; /* default */
-
-        if (parent) {
-
-            if (isinseq && prev_sibling) {
-
-                /*
-                 * if seq time container, offset from the previous sibling end
-                 */
-
-                implicit_begin = prev_sibling.end;
-
-
-            } else {
-
-                implicit_begin = parent.begin;
-
-            }
-
-        }
-
-        /* compute desired begin */
-
-        element.begin = element.explicit_begin ? element.explicit_begin + implicit_begin : implicit_begin;
-
-
-        /* determine implicit end */
-
-        var implicit_end = element.begin;
-
-        var s = null;
-
-        for (var set_i in element.sets) {
-
-            resolveTiming(doc, element.sets[set_i], s, element);
-
-            if (element.timeContainer === "seq") {
-
-                implicit_end = element.sets[set_i].end;
-
-            } else {
-
-                implicit_end = Math.max(implicit_end, element.sets[set_i].end);
-
-            }
-
-            s = element.sets[set_i];
-
-        }
-
-        if (!('contents' in element)) {
-
-            /* anonymous spans and regions and <set> and <br>s and spans with only children text nodes */
-
-            if (isinseq) {
-
-                /* in seq container, implicit duration is zero */
-
-                implicit_end = element.begin;
-
-            } else {
-
-                /* in par container, implicit duration is indefinite */
-
-                implicit_end = Number.POSITIVE_INFINITY;
-
-            }
-
-        } else {
-
-            for (var content_i in element.contents) {
-
-                resolveTiming(doc, element.contents[content_i], s, element);
-
-                if (element.timeContainer === "seq") {
-
-                    implicit_end = element.contents[content_i].end;
-
-                } else {
-
-                    implicit_end = Math.max(implicit_end, element.contents[content_i].end);
-
-                }
-
-                s = element.contents[content_i];
-
-            }
-
-        }
-
-        /* determine desired end */
-        /* it is never made really clear in SMIL that the explicit end is offset by the implicit begin */
-
-        if (element.explicit_end !== null && element.explicit_dur !== null) {
-
-            element.end = Math.min(element.begin + element.explicit_dur, implicit_begin + element.explicit_end);
-
-        } else if (element.explicit_end === null && element.explicit_dur !== null) {
-
-            element.end = element.begin + element.explicit_dur;
-
-        } else if (element.explicit_end !== null && element.explicit_dur === null) {
-
-            element.end = implicit_begin + element.explicit_end;
-
-        } else {
-
-            element.end = implicit_end;
-        }
-
-        delete element.explicit_begin;
-        delete element.explicit_dur;
-        delete element.explicit_end;
-
-        doc._registerEvent(element);
-
-    }
-
-    function ForeignElement(node) {
-        this.node = node;
-    }
-
-    function TT() {
-        this.events = [];
-        this.head = null;
-        this.body = null;
-    }
-
-    TT.prototype.initFromNode = function (node, errorHandler) {
-
-        /* compute cell resolution */
-
-        this.cellResolution = extractCellResolution(node, errorHandler);
-
-        /* extract frame rate and tick rate */
-
-        var frtr = extractFrameAndTickRate(node, errorHandler);
-
-        this.effectiveFrameRate = frtr.effectiveFrameRate;
-
-        this.tickRate = frtr.tickRate;
-
-        /* extract aspect ratio */
-
-        this.aspectRatio = extractAspectRatio(node, errorHandler);
-
-        /* check timebase */
-
-        var attr = findAttribute(node, imscNames.ns_ttp, "timeBase");
-
-        if (attr !== null && attr !== "media") {
-
-            reportFatal(errorHandler, "Unsupported time base");
-
-        }
-
-        /* retrieve extent */
-
-        var e = extractExtent(node, errorHandler);
-
-        if (e === null) {
-
-            /* TODO: remove once unit tests are ready */
-
-            this.pxDimensions = {'h': 480, 'w': 640};
-
-        } else {
-
-            if (e.h.unit !== "px" || e.w.unit !== "px") {
-                reportFatal(errorHandler, "Extent on TT must be in px or absent");
-            }
-
-            this.pxDimensions = {'h': e.h.value, 'w': e.w.value};
-        }
-
-    };
-
-    /* register a temporal events */
-    TT.prototype._registerEvent = function (elem) {
-
-        /* skip if begin is not < then end */
-
-        if (elem.end <= elem.begin)
-            return;
-
-        /* index the begin time of the event */
-
-        var b_i = indexOf(this.events, elem.begin);
-
-        if (!b_i.found) {
-            this.events.splice(b_i.index, 0, elem.begin);
-        }
-
-        /* index the end time of the event */
-
-        if (elem.end !== Number.POSITIVE_INFINITY) {
-
-            var e_i = indexOf(this.events, elem.end);
-
-            if (!e_i.found) {
-                this.events.splice(e_i.index, 0, elem.end);
-            }
-
-        }
-
-    };
-
-
-    /*
-     * Retrieves the range of ISD times covered by the document
-     * 
-     * @returns {Array} Array of two elements: min_begin_time and max_begin_time
-     * 
-     */
-    TT.prototype.getMediaTimeRange = function () {
-
-        return [this.events[0], this.events[this.events.length - 1]];
-    };
-
-    /*
-     * Returns list of ISD begin times  
-     * 
-     * @returns {Array}
-     */
-    TT.prototype.getMediaTimeEvents = function () {
-
-        return this.events;
-    };
-
-    /*
-     * Represents a TTML Head element
-     */
-
-    function Head() {
-        this.styling = null;
-        this.layout = null;
-    }
-
-    /*
-     * Represents a TTML Styling element
-     */
-
-    function Styling() {
-        this.styles = {};
-    }
-
-    /*
-     * Represents a TTML Style element
-     */
-
-    function Style() {
-        this.id = null;
-        this.styleAttrs = null;
-        this.styleRefs = null;
-    }
-
-    Style.prototype.initFromNode = function (node, errorHandler) {
-        this.id = elementGetXMLID(node);
-        this.styleAttrs = elementGetStyles(node, errorHandler);
-        this.styleRefs = elementGetStyleRefs(node);
-    };
-
-    /*
-     * Represents a TTML Layout element
-     * 
-     */
-
-    function Layout() {
-        this.regions = {};
-    }
-
-    /*
-     * TTML element utility functions
-     * 
-     */
-
-    function ContentElement(kind) {
-        this.kind = kind;
-    }
-
-    function IdentifiedElement(id) {
-        this.id = id;
-    }
-
-    IdentifiedElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        this.id = elementGetXMLID(node);
-    };
-
-    function LayoutElement(id) {
-        this.regionID = id;
-    }
-
-    LayoutElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        this.regionID = elementGetRegionID(node);
-    };
-
-    function StyledElement(styleAttrs) {
-        this.styleAttrs = styleAttrs;
-    }
-
-    StyledElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-
-        this.styleAttrs = elementGetStyles(node, errorHandler);
-
-        if (doc.head !== null && doc.head.styling !== null) {
-            mergeReferencedStyles(doc.head.styling, elementGetStyleRefs(node), this.styleAttrs, errorHandler);
-        }
-
-    };
-
-    function AnimatedElement(sets) {
-        this.sets = sets;
-    }
-
-    AnimatedElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        this.sets = [];
-    };
-
-    function ContainerElement(contents) {
-        this.contents = contents;
-    }
-
-    ContainerElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        this.contents = [];
-    };
-
-    function TimedElement(explicit_begin, explicit_end, explicit_dur) {
-        this.explicit_begin = explicit_begin;
-        this.explicit_end = explicit_end;
-        this.explicit_dur = explicit_dur;
-    }
-
-    TimedElement.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        var t = processTiming(doc, parent, node, errorHandler);
-        this.explicit_begin = t.explicit_begin;
-        this.explicit_end = t.explicit_end;
-        this.explicit_dur = t.explicit_dur;
-
-        this.timeContainer = elementGetTimeContainer(node, errorHandler);
-    };
-
-
-    /*
-     * Represents a TTML body element
-     */
-
-
-
-    function Body() {
-        ContentElement.call(this, 'body');
-    }
-
-
-    Body.prototype.initFromNode = function (doc, node, errorHandler) {
-        StyledElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        AnimatedElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        LayoutElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        ContainerElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-    };
-
-    /*
-     * Represents a TTML div element
-     */
-
-    function Div() {
-        ContentElement.call(this, 'div');
-    }
-
-    Div.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        StyledElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        AnimatedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        LayoutElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        ContainerElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-    };
-
-    /*
-     * Represents a TTML p element
-     */
-
-    function P() {
-        ContentElement.call(this, 'p');
-    }
-
-    P.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        StyledElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        AnimatedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        LayoutElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        ContainerElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-    };
-
-    /*
-     * Represents a TTML span element
-     */
-
-    function Span() {
-        ContentElement.call(this, 'span');
-    }
-
-    Span.prototype.initFromNode = function (doc, parent, node, xmlspace, errorHandler) {
-        StyledElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        AnimatedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        LayoutElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        ContainerElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-
-        this.space = xmlspace;
-    };
-
-    /*
-     * Represents a TTML anonymous span element
-     */
-
-    function AnonymousSpan() {
-        ContentElement.call(this, 'span');
-    }
-
-    AnonymousSpan.prototype.initFromText = function (doc, parent, text, xmlspace, errorHandler) {
-        TimedElement.prototype.initFromNode.call(this, doc, parent, null, errorHandler);
-
-        this.text = text;
-        this.space = xmlspace;
-    };
-
-    /*
-     * Represents a TTML br element
-     */
-
-    function Br() {
-        ContentElement.call(this, 'br');
-    }
-
-    Br.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-        LayoutElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-    };
-
-    /*
-     * Represents a TTML Region element
-     * 
-     */
-
-    function Region() {
-    }
-
-    Region.prototype.createDefaultRegion = function () {
-        var r = new Region();
-
-        IdentifiedElement.call(r, '');
-        StyledElement.call(r, {});
-        AnimatedElement.call(r, []);
-        TimedElement.call(r, 0, Number.POSITIVE_INFINITY, null);
-
-        return r;
-    };
-
-    Region.prototype.initFromNode = function (doc, node, errorHandler) {
-        IdentifiedElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        StyledElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        TimedElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-        AnimatedElement.prototype.initFromNode.call(this, doc, null, node, errorHandler);
-
-        /* immediately merge referenced styles */
-
-        if (doc.head !== null && doc.head.styling !== null) {
-            mergeReferencedStyles(doc.head.styling, elementGetStyleRefs(node), this.styleAttrs, errorHandler);
-        }
-
-    };
-
-    /*
-     * Represents a TTML Set element
-     * 
-     */
-
-    function Set() {
-    }
-
-    Set.prototype.initFromNode = function (doc, parent, node, errorHandler) {
-
-        TimedElement.prototype.initFromNode.call(this, doc, parent, node, errorHandler);
-
-        var styles = elementGetStyles(node, errorHandler);
-
-        this.qname = null;
-        this.value = null;
-
-        for (var qname in styles) {
-
-            if (this.qname) {
-
-                reportError(errorHandler, "More than one style specified on set");
-                break;
-
-            }
-
-            this.qname = qname;
-            this.value = styles[qname];
-
-        }
-
-    };
-
-    /*
-     * Utility functions
-     * 
-     */
-
-
-    function elementGetXMLID(node) {
-        return node && 'xml:id' in node.attributes ? node.attributes['xml:id'].value || null : null;
-    }
-
-    function elementGetRegionID(node) {
-        return node && 'region' in node.attributes ? node.attributes.region.value : '';
-    }
-
-    function elementGetTimeContainer(node, errorHandler) {
-
-        var tc = node && 'timeContainer' in node.attributes ? node.attributes.timeContainer.value : null;
-
-        if ((!tc) || tc === "par") {
-
-            return "par";
-
-        } else if (tc === "seq") {
-
-            return "seq";
-
-        } else {
-
-            reportError(errorHandler, "Illegal value of timeContainer (assuming 'par')");
-
-            return "par";
-
-        }
-
-    }
-
-    function elementGetStyleRefs(node) {
-
-        return node && 'style' in node.attributes ? node.attributes.style.value.split(" ") : [];
-
-    }
-
-    function elementGetStyles(node, errorHandler) {
-
-        var s = {};
-
-        if (node !== null) {
-
-            for (var i in node.attributes) {
-
-                var qname = node.attributes[i].uri + " " + node.attributes[i].local;
-
-                var sa = imscStyles.byQName[qname];
-
-                if (sa !== undefined) {
-
-                    var val = sa.parse(node.attributes[i].value);
-
-                    if (val !== null) {
-
-                        s[qname] = val;
-
-                        /* TODO: consider refactoring errorHandler into parse and compute routines */
-
-                        if (sa === imscStyles.byName.zIndex) {
-                            reportWarning(errorHandler, "zIndex attribute present but not used by IMSC1 since regions do not overlap");
-                        }
-
-                    } else {
-
-                        reportError(errorHandler, "Cannot parse styling attribute " + qname + " --> " + node.attributes[i].value);
-
-                    }
-
-                }
-
-            }
-
-        }
-
-        return s;
-    }
-
-    function findAttribute(node, ns, name) {
-        for (var i in node.attributes) {
-
-            if (node.attributes[i].uri === ns &&
-                    node.attributes[i].local === name) {
-
-                return node.attributes[i].value;
-            }
-        }
-
-        return null;
-    }
-
-    function extractAspectRatio(node, errorHandler) {
-
-        var ar = findAttribute(node, imscNames.ns_ittp, "aspectRatio");
-
-        var rslt = null;
-
-        if (ar !== null) {
-
-            var ASPECT_RATIO_RE = /(\d+) (\d+)/;
-
-            var m = ASPECT_RATIO_RE.exec(ar);
-
-            if (m !== null) {
-
-                var w = parseInt(m[1]);
-
-                var h = parseInt(m[2]);
-
-                if (w !== 0 && h !== 0) {
-
-                    rslt = w / h;
-
-                } else {
-
-                    reportError(errorHandler, "Illegal aspectRatio values (ignoring)");
-                }
-
-            } else {
-
-                reportError(errorHandler, "Malformed aspectRatio attribute (ignoring)");
-            }
-
-        }
-
-        return rslt;
-
-    }
-
-    /*
-     * Returns the cellResolution attribute from a node
-     * 
-     */
-    function extractCellResolution(node, errorHandler) {
-
-        var cr = findAttribute(node, imscNames.ns_ttp, "cellResolution");
-
-        // initial value
-
-        var h = 15;
-        var w = 32;
-
-        if (cr !== null) {
-
-            var CELL_RESOLUTION_RE = /(\d+) (\d+)/;
-
-            var m = CELL_RESOLUTION_RE.exec(cr);
-
-            if (m !== null) {
-
-                w = parseInt(m[1]);
-
-                h = parseInt(m[2]);
-
-            } else {
-
-                reportWarning(errorHandler, "Malformed cellResolution value (using initial value instead)");
-
-            }
-
-        }
-
-        return {'w': w, 'h': h};
-
-    }
-
-
-    function extractFrameAndTickRate(node, errorHandler) {
-
-        // subFrameRate is ignored per IMSC1 specification
-
-        // extract frame rate
-
-        var fps_attr = findAttribute(node, imscNames.ns_ttp, "frameRate");
-
-        // initial value
-
-        var fps = 30;
-
-        // match variable
-
-        var m;
-
-        if (fps_attr !== null) {
-
-            var FRAME_RATE_RE = /(\d+)/;
-
-            m = FRAME_RATE_RE.exec(fps_attr);
-
-            if (m !== null) {
-
-                fps = parseInt(m[1]);
-
-            } else {
-
-                reportWarning(errorHandler, "Malformed frame rate attribute (using initial value instead)");
-            }
-
-        }
-
-        // extract frame rate multiplier
-
-        var frm_attr = findAttribute(node, imscNames.ns_ttp, "frameRateMultiplier");
-
-        // initial value
-
-        var frm = 1;
-
-        if (frm_attr !== null) {
-
-            var FRAME_RATE_MULT_RE = /(\d+) (\d+)/;
-
-            m = FRAME_RATE_MULT_RE.exec(frm_attr);
-
-            if (m !== null) {
-
-                frm = parseInt(m[1]) / parseInt(m[2]);
-
-            } else {
-
-                reportWarning(errorHandler, "Malformed frame rate multiplier attribute (using initial value instead)");
-            }
-
-        }
-
-        var efps = frm * fps;
-
-        // extract tick rate
-
-        var tr = 1;
-
-        var trattr = findAttribute(node, imscNames.ns_ttp, "tickRate");
-
-        if (trattr === null) {
-
-            if (fps_attr !== null)
-                tr = efps;
-
-        } else {
-
-            var TICK_RATE_RE = /(\d+)/;
-
-            m = TICK_RATE_RE.exec(trattr);
-
-            if (m !== null) {
-
-                tr = parseInt(m[1]);
-
-            } else {
-
-                reportWarning(errorHandler, "Malformed tick rate attribute (using initial value instead)");
-            }
-
-        }
-
-        return {effectiveFrameRate: efps, tickRate: tr};
-
-    }
-
-    function extractExtent(node, errorHandler) {
-
-        var attr = findAttribute(node, imscNames.ns_tts, "extent");
-
-        if (attr === null)
-            return null;
-
-        var s = attr.split(" ");
-
-        if (s.length !== 2) {
-
-            reportWarning(errorHandler, "Malformed extent (ignoring)");
-
-            return null;
-        }
-
-        var w = imscUtils.parseLength(s[0]);
-
-        var h = imscUtils.parseLength(s[1]);
-
-        if (!h || !w) {
-
-            reportWarning(errorHandler, "Malformed extent values (ignoring)");
-
-            return null;
-        }
-
-        return {'h': h, 'w': w};
-
-    }
-
-    function parseTimeExpression(tickRate, effectiveFrameRate, str) {
-
-        var CLOCK_TIME_FRACTION_RE = /^(\d{2,}):(\d\d):(\d\d(?:\.\d+)?)$/;
-        var CLOCK_TIME_FRAMES_RE = /^(\d{2,}):(\d\d):(\d\d)\:(\d{2,})$/;
-        var OFFSET_FRAME_RE = /^(\d+(?:\.\d+)?)f$/;
-        var OFFSET_TICK_RE = /^(\d+(?:\.\d+)?)t$/;
-        var OFFSET_MS_RE = /^(\d+(?:\.\d+)?)ms$/;
-        var OFFSET_S_RE = /^(\d+(?:\.\d+)?)s$/;
-        var OFFSET_H_RE = /^(\d+(?:\.\d+)?)h$/;
-        var OFFSET_M_RE = /^(\d+(?:\.\d+)?)m$/;
-        var m;
-        var r = null;
-        if ((m = OFFSET_FRAME_RE.exec(str)) !== null) {
-
-            if (effectiveFrameRate !== null) {
-
-                r = parseFloat(m[1]) / effectiveFrameRate;
-            }
-
-        } else if ((m = OFFSET_TICK_RE.exec(str)) !== null) {
-
-            if (tickRate !== null) {
-
-                r = parseFloat(m[1]) / tickRate;
-            }
-
-        } else if ((m = OFFSET_MS_RE.exec(str)) !== null) {
-
-            r = parseFloat(m[1]) / 1000.0;
-
-        } else if ((m = OFFSET_S_RE.exec(str)) !== null) {
-
-            r = parseFloat(m[1]);
-
-        } else if ((m = OFFSET_H_RE.exec(str)) !== null) {
-
-            r = parseFloat(m[1]) * 3600.0;
-
-        } else if ((m = OFFSET_M_RE.exec(str)) !== null) {
-
-            r = parseFloat(m[1]) * 60.0;
-
-        } else if ((m = CLOCK_TIME_FRACTION_RE.exec(str)) !== null) {
-
-            r = parseInt(m[1]) * 3600 +
-                    parseInt(m[2]) * 60 +
-                    parseFloat(m[3]);
-
-        } else if ((m = CLOCK_TIME_FRAMES_RE.exec(str)) !== null) {
-
-            /* this assumes that HH:MM:SS is a clock-time-with-fraction */
-
-            if (effectiveFrameRate !== null) {
-
-                r = parseInt(m[1]) * 3600 +
-                        parseInt(m[2]) * 60 +
-                        parseInt(m[3]) +
-                        (m[4] === null ? 0 : parseInt(m[4]) / effectiveFrameRate);
-            }
-
-        }
-
-        return r;
-    }
-
-    function processTiming(doc, parent, node, errorHandler) {
-
-        /* determine explicit begin */
-
-        var explicit_begin = null;
-
-        if (node && 'begin' in node.attributes) {
-
-            explicit_begin = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.begin.value);
-
-            if (explicit_begin === null) {
-
-                reportWarning(errorHandler, "Malformed begin value " + node.attributes.begin.value + " (using 0)");
-
-            }
-
-        }
-
-        /* determine explicit duration */
-
-        var explicit_dur = null;
-
-        if (node && 'dur' in node.attributes) {
-
-            explicit_dur = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.dur.value);
-
-            if (explicit_dur === null) {
-
-                reportWarning(errorHandler, "Malformed dur value " + node.attributes.dur.value + " (ignoring)");
-
-            }
-
-        }
-
-        /* determine explicit end */
-
-        var explicit_end = null;
-
-        if (node && 'end' in node.attributes) {
-
-            explicit_end = parseTimeExpression(doc.tickRate, doc.effectiveFrameRate, node.attributes.end.value);
-
-            if (explicit_end === null) {
-
-                reportWarning(errorHandler, "Malformed end value (ignoring)");
-
-            }
-
-        }
-
-        return {explicit_begin: explicit_begin,
-            explicit_end: explicit_end,
-            explicit_dur: explicit_dur};
-
-    }
-
-
-
-    function mergeChainedStyles(styling, style, errorHandler) {
-
-        while (style.styleRefs.length > 0) {
-
-            var sref = style.styleRefs.pop();
-
-            if (!(sref in styling.styles)) {
-                reportError(errorHandler, "Non-existant style id referenced");
-                continue;
-            }
-
-            mergeChainedStyles(styling, styling.styles[sref], errorHandler);
-
-            mergeStylesIfNotPresent(styling.styles[sref].styleAttrs, style.styleAttrs);
-
-        }
-
-    }
-
-    function mergeReferencedStyles(styling, stylerefs, styleattrs, errorHandler) {
-
-        for (var i = stylerefs.length - 1; i >= 0; i--) {
-
-            var sref = stylerefs[i];
-
-            if (!(sref in styling.styles)) {
-                reportError(errorHandler, "Non-existant style id referenced");
-                continue;
-            }
-
-            mergeStylesIfNotPresent(styling.styles[sref].styleAttrs, styleattrs);
-
-        }
-
-    }
-
-    function mergeStylesIfNotPresent(from_styles, into_styles) {
-
-        for (var sname in from_styles) {
-
-            if (sname in into_styles)
-                continue;
-
-            into_styles[sname] = from_styles[sname];
-
-        }
-
-    }
-
-    /* TODO: validate style format at parsing */
-
-
-    /*
-     * ERROR HANDLING UTILITY FUNCTIONS
-     * 
-     */
-
-    function reportInfo(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.info && errorHandler.info(msg))
-            throw msg;
-
-    }
-
-    function reportWarning(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.warn && errorHandler.warn(msg))
-            throw msg;
-
-    }
-
-    function reportError(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.error && errorHandler.error(msg))
-            throw msg;
-
-    }
-
-    function reportFatal(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.fatal)
-            errorHandler.fatal(msg);
-
-        throw msg;
-
-    }
-
-    /*
-     * Binary search utility function
-     * 
-     * @typedef {Object} BinarySearchResult
-     * @property {boolean} found Was an exact match found?
-     * @property {number} index Position of the exact match or insert position
-     * 
-     * @returns {BinarySearchResult}
-     */
-
-    function indexOf(arr, searchval) {
-
-        var min = 0;
-        var max = arr.length - 1;
-        var cur;
-
-        while (min <= max) {
-
-            cur = Math.floor((min + max) / 2);
-
-            var curval = arr[cur];
-
-            if (curval < searchval) {
-
-                min = cur + 1;
-
-            } else if (curval > searchval) {
-
-                max = cur - 1;
-
-            } else {
-
-                return {found: true, index: cur};
-
-            }
-
-        }
-
-        return {found: false, index: min};
-    }
-
-
-})(typeof exports === 'undefined' ? this.imscDoc = {} : exports,
-        typeof sax === 'undefined' ? _dereq_(34) : sax,
-        typeof imscNames === 'undefined' ? _dereq_(39) : imscNames,
-        typeof imscStyles === 'undefined' ? _dereq_(40) : imscStyles,
-        typeof imscUtils === 'undefined' ? _dereq_(41) : imscUtils);
-
-},{"34":34,"39":39,"40":40,"41":41}],36:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscHTML
- */
-
-;
-(function (imscHTML, imscNames, imscStyles) {
-
-    /**
-     * Function that maps <pre>smpte:background</pre> URIs to URLs resolving to image resource
-     * @callback IMGResolver
-     * @param {string} <pre>smpte:background</pre> URI
-     * @return {string} PNG resource URL
-     */
-
-
-    /**
-     * Renders an ISD object (returned by <pre>generateISD()</pre>) into a 
-     * parent element, that must be attached to the DOM. The ISD will be rendered
-     * into a child <pre>div</pre>
-     * with heigh and width equal to the clientHeight and clientWidth of the element,
-     * unless explicitly specified otherwise by the caller. Images URIs specified 
-     * by <pre>smpte:background</pre> attributes are mapped to image resource URLs
-     * by an <pre>imgResolver</pre> function. The latter takes the value of <code>smpte:background</code>
-     * attribute and an <code>img</code> DOM element as input, and is expected to
-     * set the <code>src</code> attribute of the <code>img</code> to the absolute URI of the image.
-     * <pre>displayForcedOnlyMode</pre> sets the (boolean)
-     * value of the IMSC1 displayForcedOnlyMode parameter. The function returns
-     * an opaque object that should passed in <code>previousISDState</code> when this function
-     * is called for the next ISD, otherwise <code>previousISDState</code> should be set to 
-     * <code>null</code>.
-     * 
-     * @param {Object} isd ISD to be rendered
-     * @param {Object} element Element into which the ISD is rendered
-     * @param {?IMGResolver} imgResolver Resolve <pre>smpte:background</pre> URIs into URLs.
-     * @param {?number} eheight Height (in pixel) of the child <div>div</div> or null 
-     *                  to use clientHeight of the parent element
-     * @param {?number} ewidth Width (in pixel) of the child <div>div</div> or null
-     *                  to use clientWidth of the parent element
-     * @param {?boolean} displayForcedOnlyMode Value of the IMSC1 displayForcedOnlyMode parameter,
-     *                   or false if null         
-     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
-     * @param {Object} previousISDState State saved during processing of the previous ISD, or null if initial call
-     * @param {?boolean} enableRollUp Enables roll-up animations (see CEA 708)
-     * @return {Object} ISD state to be provided when this funtion is called for the next ISD
-     */
-
-    imscHTML.render = function (isd,
-        element,
-        imgResolver,
-        eheight,
-        ewidth,
-        displayForcedOnlyMode,
-        errorHandler,
-        previousISDState,
-        enableRollUp
-        ) {
-
-        /* maintain aspect ratio if specified */
-
-        var height = eheight || element.clientHeight;
-        var width = ewidth || element.clientWidth;
-
-        if (isd.aspectRatio !== null) {
-
-            var twidth = height * isd.aspectRatio;
-
-            if (twidth > width) {
-
-                height = Math.round(width / isd.aspectRatio);
-
-            } else {
-
-                width = twidth;
-
-            }
-
-        }
-
-        var rootcontainer = document.createElement("div");
-
-        rootcontainer.style.position = "relative";
-        rootcontainer.style.width = width + "px";
-        rootcontainer.style.height = height + "px";
-        rootcontainer.style.margin = "auto";
-        rootcontainer.style.top = 0;
-        rootcontainer.style.bottom = 0;
-        rootcontainer.style.left = 0;
-        rootcontainer.style.right = 0;
-        rootcontainer.style.zIndex = 0;
-
-        var context = {
-            h: height,
-            w: width,
-            regionH: null,
-            regionW: null,
-            imgResolver: imgResolver,
-            displayForcedOnlyMode: displayForcedOnlyMode || false,
-            isd: isd,
-            errorHandler: errorHandler,
-            previousISDState: previousISDState,
-            enableRollUp: enableRollUp || false,
-            currentISDState: {},
-            flg: null, /* current fillLineGap value if active, null otherwise */
-            lp: null, /* current linePadding value if active, null otherwise */
-            mra: null, /* current multiRowAlign value if active, null otherwise */
-            ipd: null, /* inline progression direction (lr, rl, tb) */
-            bpd: null /* block progression direction (lr, rl, tb) */
-        };
-
-        element.appendChild(rootcontainer);
-
-        for (var i in isd.contents) {
-
-            processElement(context, rootcontainer, isd.contents[i]);
-
-        }
-
-        return context.currentISDState;
-
-    };
-
-    function processElement(context, dom_parent, isd_element) {
-
-        var e;
-
-        if (isd_element.kind === 'region') {
-
-            e = document.createElement("div");
-            e.style.position = "absolute";
-
-        } else if (isd_element.kind === 'body') {
-
-            e = document.createElement("div");
-
-        } else if (isd_element.kind === 'div') {
-
-            e = document.createElement("div");
-
-        } else if (isd_element.kind === 'p') {
-
-            e = document.createElement("p");
-
-        } else if (isd_element.kind === 'span') {
-
-            e = document.createElement("span");
-
-            //e.textContent = isd_element.text;
-
-        } else if (isd_element.kind === 'br') {
-
-            e = document.createElement("br");
-
-        }
-
-        if (!e) {
-
-            reportError(context.errorHandler, "Error processing ISD element kind: " + isd_element.kind);
-
-            return;
-
-        }
-
-        /* override UA default margin */
-        /* TODO: should apply to <p> only */
-
-        e.style.margin = "0";
-
-        /* tranform TTML styles to CSS styles */
-
-        for (var i in STYLING_MAP_DEFS) {
-
-            var sm = STYLING_MAP_DEFS[i];
-
-            var attr = isd_element.styleAttrs[sm.qname];
-
-            if (attr !== undefined && sm.map !== null) {
-
-                sm.map(context, e, isd_element, attr);
-
-            }
-
-        }
-
-        var proc_e = e;
-
-        /* remember writing direction */
-
-        if (isd_element.kind === "region") {
-
-            var wdir = isd_element.styleAttrs[imscStyles.byName.writingMode.qname];
-
-            if (wdir === "lrtb" || wdir === "lr") {
-
-                context.ipd = "lr";
-                context.bpd = "tb";
-
-            } else if (wdir === "rltb" || wdir === "rl") {
-
-                context.ipd = "rl";
-                context.bpd = "tb";
-
-            } else if (wdir === "tblr") {
-
-                context.ipd = "tb";
-                context.bpd = "lr";
-
-            } else if (wdir === "tbrl" || wdir === "tb") {
-
-                context.ipd = "tb";
-                context.bpd = "rl";
-
-            }
-
-        }
-
-        /* do we have linePadding ? */
-
-        var lp = isd_element.styleAttrs[imscStyles.byName.linePadding.qname];
-
-        if (lp && lp > 0) {
-
-            /* apply padding to the <p> so that line padding does not cause line wraps */
-
-            if (context.bpd === "tb") {
-
-                proc_e.style.paddingLeft = lp * context.h + "px";
-                proc_e.style.paddingRight = lp * context.h + "px";
-
-            } else {
-
-                proc_e.style.paddingTop = lp * context.h + "px";
-                proc_e.style.paddingBottom = lp * context.h + "px";
-
-            }
-
-            context.lp = lp;
-        }
-
-        // do we have multiRowAlign?
-
-        var mra = isd_element.styleAttrs[imscStyles.byName.multiRowAlign.qname];
-
-        if (mra && mra !== "auto") {
-
-            /* create inline block to handle multirowAlign */
-
-            var s = document.createElement("span");
-
-            s.style.display = "inline-block";
-
-            s.style.textAlign = mra;
-
-            e.appendChild(s);
-
-            proc_e = s;
-
-            context.mra = mra;
-
-        }
-
-        /* remember we are filling line gaps */
-
-        if (isd_element.styleAttrs[imscStyles.byName.fillLineGap.qname]) {
-            context.flg = true;
-        }
-
-
-        if (isd_element.kind === "span" && isd_element.text) {
-
-            if (context.lp || context.mra || context.flg) {
-
-                // wrap characters in spans to find the line wrap locations
-
-                for (var j = 0; j < isd_element.text.length; j++) {
-
-                    var span = document.createElement("span");
-
-                    span.textContent = isd_element.text.charAt(j);
-
-                    e.appendChild(span);
-
-                }
-
-            } else {
-
-                e.textContent = isd_element.text;
-
-            }
-        }
-
-        dom_parent.appendChild(e);
-
-        /* process the children of the ISD element */
-
-        for (var k in isd_element.contents) {
-
-            processElement(context, proc_e, isd_element.contents[k]);
-
-        }
-
-        /* list of lines */
-
-        var linelist = [];
-
-
-        /* paragraph processing */
-        /* TODO: linePadding only supported for horizontal scripts */
-
-        if ((context.lp || context.mra || context.flg) && isd_element.kind === "p") {
-
-            constructLineList(context, proc_e, linelist, null);
-
-            /* insert line breaks for multirowalign */
-
-            if (context.mra) {
-
-                applyMultiRowAlign(linelist);
-
-                context.mra = null;
-
-            }
-
-            /* add linepadding */
-
-            if (context.lp) {
-
-                applyLinePadding(linelist, context.lp * context.h, context);
-
-                context.lp = null;
-
-            }
-
-            /* fill line gaps linepadding */
-
-            if (context.flg) {
-
-                var par_edges = rect2edges(proc_e.getBoundingClientRect(), context);
-
-                applyFillLineGap(linelist, par_edges.before, par_edges.after, context);
-
-                context.flg = null;
-
-            }
-
-        }
-
-
-        /* region processing */
-
-        if (isd_element.kind === "region") {
-
-            /* build line list */
-
-            constructLineList(context, proc_e, linelist);
-
-            /* perform roll up if needed */
-
-            if ((context.bpd === "tb") &&
-                context.enableRollUp &&
-                isd_element.contents.length > 0 &&
-                isd_element.styleAttrs[imscStyles.byName.displayAlign.qname] === 'after') {
-
-                /* horrible hack, perhaps default region id should be underscore everywhere? */
-
-                var rid = isd_element.id === '' ? '_' : isd_element.id;
-
-                var rb = new RegionPBuffer(rid, linelist);
-
-                context.currentISDState[rb.id] = rb;
-
-                if (context.previousISDState &&
-                    rb.id in context.previousISDState &&
-                    context.previousISDState[rb.id].plist.length > 0 &&
-                    rb.plist.length > 1 &&
-                    rb.plist[rb.plist.length - 2].text ===
-                    context.previousISDState[rb.id].plist[context.previousISDState[rb.id].plist.length - 1].text) {
-
-                    var body_elem = e.firstElementChild;
-                    
-                    var h = rb.plist[rb.plist.length - 1].after - rb.plist[rb.plist.length - 1].before;
-
-                    body_elem.style.bottom = "-" + h + "px";
-                    body_elem.style.transition = "transform 0.4s";
-                    body_elem.style.position = "relative";
-                    body_elem.style.transform = "translateY(-" + h + "px)";
-
-                }
-
-            }
-
-            /* TODO: clean-up the spans ? */
-
-        }
-    }
-
-    function applyLinePadding(lineList, lp, context) {
-
-        for (var i in lineList) {
-
-            var l = lineList[i].elements.length;
-
-            var se = lineList[i].elements[lineList[i].start_elem];
-
-            var ee = lineList[i].elements[lineList[i].end_elem];
-
-            if (l !== 0) {
-
-                if (context.ipd === "lr") {
-
-                    se.node.style.paddingLeft = lp + "px";
-                    se.node.style.marginLeft = "-" + lp + "px";
-
-                } else if (context.ipd === "rl") {
-
-                    se.node.style.paddingRight = lp + "px";
-                    se.node.style.marginRight = "-" + lp + "px";
-
-                } else if (context.ipd === "tb") {
-
-                    se.node.style.paddingTop = lp + "px";
-                    se.node.style.marginTop = "-" + lp + "px";
-
-                }
-
-                se.node.style.backgroundColor = se.bgcolor;
-
-                if (context.ipd === "lr") {
-
-                    ee.node.style.paddingRight = lp + "px";
-                    ee.node.style.marginRight = "-" + lp + "px";
-
-                } else if (context.ipd === "rl") {
-
-                    ee.node.style.paddingLeft = lp + "px";
-                    ee.node.style.marginLeft = "-" + lp + "px";
-
-                } else if (context.ipd === "tb") {
-
-                    ee.node.style.paddingBottom = lp + "px";
-                    ee.node.style.marginBottom = "-" + lp + "px";
-
-                }
-
-                ee.node.style.backgroundColor = ee.bgcolor;
-
-            }
-
-        }
-
-    }
-
-    function applyMultiRowAlign(lineList) {
-
-        /* apply an explicit br to all but the last line */
-
-        for (var i = 0; i < lineList.length - 1; i++) {
-
-            var l = lineList[i].elements.length;
-
-            if (l !== 0 && lineList[i].br === false) {
-                var br = document.createElement("br");
-
-                var lastnode = lineList[i].elements[l - 1].node;
-
-                lastnode.parentElement.insertBefore(br, lastnode.nextSibling);
-            }
-
-        }
-
-    }
-
-    function applyFillLineGap(lineList, par_before, par_after, context) {
-
-        /* positive for BPD = lr and tb, negative for BPD = rl */
-        var s = Math.sign(par_after - par_before);
-
-        for (var i = 0; i <= lineList.length; i++) {
-
-            /* compute frontier between lines */
-
-            var frontier;
-
-            if (i === 0) {
-
-                frontier = par_before;
-
-            } else if (i === lineList.length) {
-
-                frontier = par_after;
-
-            } else {
-
-                frontier = (lineList[i].before + lineList[i - 1].after) / 2;
-
-            }
-
-            /* padding amount */
-
-            var pad;
-
-            /* current element */
-
-            var e;
-
-            /* before line */
-
-            if (i > 0) {
-
-                for (var j = 0; j < lineList[i - 1].elements.length; j++) {
-
-                    if (lineList[i - 1].elements[j].bgcolor === null) continue;
-
-                    e = lineList[i - 1].elements[j];
-
-                    if (s * (e.after - frontier) < 0) {
-
-                        pad = Math.ceil(Math.abs(frontier - e.after)) + "px";
-
-                        e.node.style.backgroundColor = e.bgcolor;
-
-                        if (context.bpd === "lr") {
-
-                            e.node.style.paddingRight = pad;
-
-
-                        } else if (context.bpd === "rl") {
-
-                            e.node.style.paddingLeft = pad;
-
-                        } else if (context.bpd === "tb") {
-
-                            e.node.style.paddingBottom = pad;
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-            /* after line */
-
-            if (i < lineList.length) {
-
-                for (var k = 0; k < lineList[i].elements.length; k++) {
-
-                    e = lineList[i].elements[k];
-
-                    if (e.bgcolor === null) continue;
-
-                    if (s * (e.before - frontier) > 0) {
-
-                        pad = Math.ceil(Math.abs(e.before - frontier)) + "px";
-
-                        e.node.style.backgroundColor = e.bgcolor;
-
-                        if (context.bpd === "lr") {
-
-                            e.node.style.paddingLeft = pad;
-
-
-                        } else if (context.bpd === "rl") {
-
-                            e.node.style.paddingRight = pad;
-
-
-                        } else if (context.bpd === "tb") {
-
-                            e.node.style.paddingTop = pad;
-
-                        }
-
-                    }
-
-                }
-
-            }
-
-        }
-
-    }
-
-    function RegionPBuffer(id, lineList) {
-
-        this.id = id;
-
-        this.plist = lineList;
-
-    }
-
-    function pruneEmptySpans(element) {
-
-        var child = element.firstChild;
-
-        while (child) {
-
-            var nchild = child.nextSibling;
-
-            if (child.nodeType === Node.ELEMENT_NODE &&
-                child.localName === 'span') {
-
-                pruneEmptySpans(child);
-
-                if (child.childElementCount === 0 &&
-                    child.textContent.length === 0) {
-
-                    element.removeChild(child);
-
-                }
-            }
-
-            child = nchild;
-        }
-
-    }
-
-    function rect2edges(rect, context) {
-
-        var edges = {before: null, after: null, start: null, end: null};
-
-        if (context.bpd === "tb") {
-
-            edges.before = rect.top;
-            edges.after = rect.bottom;
-
-            if (context.ipd === "lr") {
-
-                edges.start = rect.left;
-                edges.end = rect.right;
-
-            } else {
-
-                edges.start = rect.right;
-                edges.end = rect.left;
-            }
-
-        } else if (context.bpd === "lr") {
-
-            edges.before = rect.left;
-            edges.after = rect.right;
-            edges.start = rect.top;
-            edges.end = rect.bottom;
-
-        } else if (context.bpd === "rl") {
-
-            edges.before = rect.right;
-            edges.after = rect.left;
-            edges.start = rect.top;
-            edges.end = rect.bottom;
-
-        }
-
-        return edges;
-
-    }
-
-    function constructLineList(context, element, llist, bgcolor) {
-
-        var curbgcolor = element.style.backgroundColor || bgcolor;
-
-        if (element.childElementCount === 0) {
-
-            if (element.localName === 'span') {
-
-                var r = element.getBoundingClientRect();
-
-                /* skip if span is not displayed */
-
-                if (r.height === 0 || r.width === 0) return;
-
-                var edges = rect2edges(r, context);
-
-                if (llist.length === 0 ||
-                    (!isSameLine(edges.before, edges.after, llist[llist.length - 1].before, llist[llist.length - 1].after))
-                    ) {
-
-                    llist.push({
-                        before: edges.before,
-                        after: edges.after,
-                        start: edges.start,
-                        end: edges.end,
-                        start_elem: 0,
-                        end_elem: 0,
-                        elements: [],
-                        text: "",
-                        br: false
-                    });
-
-                } else {
-
-                    /* positive for BPD = lr and tb, negative for BPD = rl */
-                    var bpd_dir = Math.sign(edges.after - edges.before);
-
-                    /* positive for IPD = lr and tb, negative for IPD = rl */
-                    var ipd_dir = Math.sign(edges.end - edges.start);
-
-                    /* check if the line height has increased */
-
-                    if (bpd_dir * (edges.before - llist[llist.length - 1].before) < 0) {
-                        llist[llist.length - 1].before = edges.before;
-                    }
-
-                    if (bpd_dir * (edges.after - llist[llist.length - 1].after) > 0) {
-                        llist[llist.length - 1].after = edges.after;
-                    }
-
-                    if (ipd_dir * (edges.start - llist[llist.length - 1].start) < 0) {
-                        llist[llist.length - 1].start = edges.start;
-                        llist[llist.length - 1].start_elem = llist[llist.length - 1].elements.length;
-                    }
-
-                    if (ipd_dir * (edges.end - llist[llist.length - 1].end) > 0) {
-                        llist[llist.length - 1].end = edges.end;
-                        llist[llist.length - 1].end_elem = llist[llist.length - 1].elements.length;
-                    }
-
-                }
-
-                llist[llist.length - 1].text += element.textContent;
-
-                llist[llist.length - 1].elements.push(
-                    {
-                        node: element,
-                        bgcolor: curbgcolor,
-                        before: edges.before,
-                        after: edges.after
-                    }
-                );
-
-            } else if (element.localName === 'br' && llist.length !== 0) {
-
-                llist[llist.length - 1].br = true;
-
-            }
-
-        } else {
-
-            var child = element.firstChild;
-
-            while (child) {
-
-                if (child.nodeType === Node.ELEMENT_NODE) {
-
-                    constructLineList(context, child, llist, curbgcolor);
-
-                }
-
-                child = child.nextSibling;
-            }
-        }
-
-    }
-
-    function isSameLine(before1, after1, before2, after2) {
-
-        return ((after1 < after2) && (before1 > before2)) || ((after2 <= after1) && (before2 >= before1));
-
-    }
-
-    function HTMLStylingMapDefintion(qName, mapFunc) {
-        this.qname = qName;
-        this.map = mapFunc;
-    }
-
-    var STYLING_MAP_DEFS = [
-
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling backgroundColor",
-            function (context, dom_element, isd_element, attr) {
-
-                /* skip if transparent */
-                if (attr[3] === 0) return;
-
-                dom_element.style.backgroundColor = "rgba(" +
-                    attr[0].toString() + "," +
-                    attr[1].toString() + "," +
-                    attr[2].toString() + "," +
-                    (attr[3] / 255).toString() +
-                    ")";
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling color",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.color = "rgba(" +
-                    attr[0].toString() + "," +
-                    attr[1].toString() + "," +
-                    attr[2].toString() + "," +
-                    (attr[3] / 255).toString() +
-                    ")";
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling direction",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.direction = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling display",
-            function (context, dom_element, isd_element, attr) {}
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling displayAlign",
-            function (context, dom_element, isd_element, attr) {
-
-                /* see https://css-tricks.com/snippets/css/a-guide-to-flexbox/ */
-
-                /* TODO: is this affected by writing direction? */
-
-                dom_element.style.display = "flex";
-                dom_element.style.flexDirection = "column";
-
-
-                if (attr === "before") {
-
-                    dom_element.style.justifyContent = "flex-start";
-
-                } else if (attr === "center") {
-
-                    dom_element.style.justifyContent = "center";
-
-                } else if (attr === "after") {
-
-                    dom_element.style.justifyContent = "flex-end";
-                }
-
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling extent",
-            function (context, dom_element, isd_element, attr) {
-                /* TODO: this is super ugly */
-
-                context.regionH = (attr.h * context.h);
-                context.regionW = (attr.w * context.w);
-
-                /* 
-                 * CSS height/width are measured against the content rectangle,
-                 * whereas TTML height/width include padding
-                 */
-
-                var hdelta = 0;
-                var wdelta = 0;
-
-                var p = isd_element.styleAttrs["http://www.w3.org/ns/ttml#styling padding"];
-
-                if (!p) {
-
-                    /* error */
-
-                } else {
-
-                    hdelta = (p[0] + p[2]) * context.h;
-                    wdelta = (p[1] + p[3]) * context.w;
-
-                }
-
-                dom_element.style.height = (context.regionH - hdelta) + "px";
-                dom_element.style.width = (context.regionW - wdelta) + "px";
-
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling fontFamily",
-            function (context, dom_element, isd_element, attr) {
-
-                var rslt = [];
-
-                /* per IMSC1 */
-
-                for (var i in attr) {
-
-                    if (attr[i] === "monospaceSerif") {
-
-                        rslt.push("Courier New");
-                        rslt.push('"Liberation Mono"');
-                        rslt.push("Courier");
-                        rslt.push("monospace");
-
-                    } else if (attr[i] === "proportionalSansSerif") {
-
-                        rslt.push("Arial");
-                        rslt.push("Helvetica");
-                        rslt.push('"Liberation Sans"');
-                        rslt.push("sans-serif");
-
-                    } else if (attr[i] === "monospace") {
-
-                        rslt.push("monospace");
-
-                    } else if (attr[i] === "sansSerif") {
-
-                        rslt.push("sans-serif");
-
-                    } else if (attr[i] === "serif") {
-
-                        rslt.push("serif");
-
-                    } else if (attr[i] === "monospaceSansSerif") {
-
-                        rslt.push("Consolas");
-                        rslt.push("monospace");
-
-                    } else if (attr[i] === "proportionalSerif") {
-
-                        rslt.push("serif");
-
-                    } else {
-
-                        rslt.push(attr[i]);
-
-                    }
-
-                }
-
-                dom_element.style.fontFamily = rslt.join(",");
-            }
-        ),
-
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling fontSize",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.fontSize = (attr * context.h) + "px";
-            }
-        ),
-
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling fontStyle",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.fontStyle = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling fontWeight",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.fontWeight = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling lineHeight",
-            function (context, dom_element, isd_element, attr) {
-                if (attr === "normal") {
-
-                    dom_element.style.lineHeight = "normal";
-
-                } else {
-
-                    dom_element.style.lineHeight = (attr * context.h) + "px";
-                }
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling opacity",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.opacity = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling origin",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.top = (attr.h * context.h) + "px";
-                dom_element.style.left = (attr.w * context.w) + "px";
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling overflow",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.overflow = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling padding",
-            function (context, dom_element, isd_element, attr) {
-
-                /* attr: top,left,bottom,right*/
-
-                /* style: top right bottom left*/
-
-                var rslt = [];
-
-                rslt[0] = (attr[0] * context.h) + "px";
-                rslt[1] = (attr[3] * context.w) + "px";
-                rslt[2] = (attr[2] * context.h) + "px";
-                rslt[3] = (attr[1] * context.w) + "px";
-
-                dom_element.style.padding = rslt.join(" ");
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling showBackground",
-            null
-            ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling textAlign",
-            function (context, dom_element, isd_element, attr) {
-
-                var ta;
-                var dir = isd_element.styleAttrs[imscStyles.byName.direction.qname];
-
-                /* handle UAs that do not understand start or end */
-
-                if (attr === "start") {
-
-                    ta = (dir === "rtl") ? "right" : "left";
-
-                } else if (attr === "end") {
-
-                    ta = (dir === "rtl") ? "left" : "right";
-
-                } else {
-
-                    ta = attr;
-
-                }
-
-                dom_element.style.textAlign = ta;
-
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling textDecoration",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.textDecoration = attr.join(" ").replace("lineThrough", "line-through");
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling textOutline",
-            function (context, dom_element, isd_element, attr) {
-
-                if (attr === "none") {
-
-                    dom_element.style.textShadow = "";
-
-                } else {
-
-                    dom_element.style.textShadow = "rgba(" +
-                        attr.color[0].toString() + "," +
-                        attr.color[1].toString() + "," +
-                        attr.color[2].toString() + "," +
-                        (attr.color[3] / 255).toString() +
-                        ")" + " 0px 0px " +
-                        (attr.thickness * context.h) + "px";
-
-                }
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling unicodeBidi",
-            function (context, dom_element, isd_element, attr) {
-
-                var ub;
-
-                if (attr === 'bidiOverride') {
-                    ub = "bidi-override";
-                } else {
-                    ub = attr;
-                }
-
-                dom_element.style.unicodeBidi = ub;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling visibility",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.visibility = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling wrapOption",
-            function (context, dom_element, isd_element, attr) {
-
-                if (attr === "wrap") {
-
-                    if (isd_element.space === "preserve") {
-                        dom_element.style.whiteSpace = "pre-wrap";
-                    } else {
-                        dom_element.style.whiteSpace = "normal";
-                    }
-
-                } else {
-
-                    if (isd_element.space === "preserve") {
-
-                        dom_element.style.whiteSpace = "pre";
-
-                    } else {
-                        dom_element.style.whiteSpace = "noWrap";
-                    }
-
-                }
-
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling writingMode",
-            function (context, dom_element, isd_element, attr) {
-                if (attr === "lrtb" || attr === "lr") {
-
-                    dom_element.style.writingMode = "horizontal-tb";
-
-                } else if (attr === "rltb" || attr === "rl") {
-
-                    dom_element.style.writingMode = "horizontal-tb";
-
-                } else if (attr === "tblr") {
-
-                    dom_element.style.writingMode = "vertical-lr";
-
-                } else if (attr === "tbrl" || attr === "tb") {
-
-                    dom_element.style.writingMode = "vertical-rl";
-
-                }
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml#styling zIndex",
-            function (context, dom_element, isd_element, attr) {
-                dom_element.style.zIndex = attr;
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.smpte-ra.org/schemas/2052-1/2010/smpte-tt backgroundImage",
-            function (context, dom_element, isd_element, attr) {
-
-                if (context.imgResolver !== null && attr !== null) {
-
-                    var img = document.createElement("img");
-
-                    var uri = context.imgResolver(attr, img);
-
-                    if (uri)
-                        img.src = uri;
-
-                    img.height = context.regionH;
-                    img.width = context.regionW;
-
-                    dom_element.appendChild(img);
-                }
-            }
-        ),
-        new HTMLStylingMapDefintion(
-            "http://www.w3.org/ns/ttml/profile/imsc1#styling forcedDisplay",
-            function (context, dom_element, isd_element, attr) {
-
-                if (context.displayForcedOnlyMode && attr === false) {
-                    dom_element.style.visibility = "hidden";
-                }
-
-            }
-        )
-    ];
-
-    var STYLMAP_BY_QNAME = {};
-
-    for (var i in STYLING_MAP_DEFS) {
-
-        STYLMAP_BY_QNAME[STYLING_MAP_DEFS[i].qname] = STYLING_MAP_DEFS[i];
-    }
-
-    function reportError(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.error && errorHandler.error(msg))
-            throw msg;
-
-    }
-
-})(typeof exports === 'undefined' ? this.imscHTML = {} : exports,
-    typeof imscNames === 'undefined' ? _dereq_(39) : imscNames,
-    typeof imscStyles === 'undefined' ? _dereq_(40) : imscStyles);
-},{"39":39,"40":40}],37:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscISD
- */
-
-
-;
-(function (imscISD, imscNames, imscStyles) { // wrapper for non-node envs
-
-    /** 
-     * Creates a canonical representation of an IMSC1 document returned by <pre>imscDoc.fromXML()</pre>
-     * at a given absolute offset in seconds. This offset does not have to be one of the values returned
-     * by <pre>getMediaTimeEvents()</pre>.
-     * 
-     * @param {Object} tt IMSC1 document
-     * @param {number} offset Absolute offset (in seconds)
-     * @param {?module:imscUtils.ErrorHandler} errorHandler Error callback
-     * @returns {Object} Opaque in-memory representation of an ISD
-     */
-
-    imscISD.generateISD = function (tt, offset, errorHandler) {
-
-        /* TODO check for tt and offset validity */
-
-        /* create the ISD object from the IMSC1 doc */
-
-        var isd = new ISD(tt);
-        
-        /* context */
-        
-        var context = {
-          
-            /* empty for now */
-            
-        };
-
-        /* process regions */
-
-        for (var r in tt.head.layout.regions) {
-
-            /* post-order traversal of the body tree per [construct intermediate document] */
-
-            var c = isdProcessContentElement(tt, offset, tt.head.layout.regions[r], tt.body, null, '', tt.head.layout.regions[r], errorHandler, context);
-
-            if (c !== null) {
-
-                /* add the region to the ISD */
-
-                isd.contents.push(c.element);
-            }
-
-
-        }
-
-        return isd;
-    };
-
-    function isdProcessContentElement(doc, offset, region, body, parent, inherited_region_id, elem, errorHandler, context) {
-
-        /* prune if temporally inactive */
-
-        if (offset < elem.begin || offset >= elem.end) {
-            return null;
-        }
-
-        /* 
-         * set the associated region as specified by the regionID attribute, or the 
-         * inherited associated region otherwise
-         */
-
-        var associated_region_id = 'regionID' in elem && elem.regionID !== '' ? elem.regionID : inherited_region_id;
-
-        /* prune the element if either:
-         * - the element is not terminal and the associated region is neither the default
-         *   region nor the parent region (this allows children to be associated with a 
-         *   region later on)
-         * - the element is terminal and the associated region is not the parent region
-         */
-        
-        /* TODO: improve detection of terminal elements since <region> has no contents */
-
-        if (parent !== null /* are we in the region element */ &&
-            associated_region_id !== region.id &&
-                (
-                    (! ('contents' in elem)) ||
-                    ('contents' in elem && elem.contents.length === 0) ||
-                    associated_region_id !== ''
-                )
-             )
-            return null;
-
-        /* create an ISD element, including applying specified styles */
-
-        var isd_element = new ISDContentElement(elem);
-
-        /* apply set (animation) styling */
-
-        for (var i in elem.sets) {
-
-            if (offset < elem.sets[i].begin || offset >= elem.sets[i].end)
-                continue;
-
-            isd_element.styleAttrs[elem.sets[i].qname] = elem.sets[i].value;
-
-        }
-
-        /* 
-         * keep track of specified styling attributes so that we
-         * can compute them later
-         */
-
-        var spec_attr = {};
-
-        for (var qname in isd_element.styleAttrs) {
-
-            spec_attr[qname] = true;
-
-            /* special rule for tts:writingMode (section 7.29.1 of XSL)
-             * direction is set consistently with writingMode only
-             * if writingMode sets inline-direction to LTR or RTL  
-             */
-
-            if (qname === imscStyles.byName.writingMode.qname &&
-                !(imscStyles.byName.direction.qname in isd_element.styleAttrs)) {
-
-                var wm = isd_element.styleAttrs[qname];
-
-                if (wm === "lrtb" || wm === "lr") {
-
-                    isd_element.styleAttrs[imscStyles.byName.direction.qname] = "ltr";
-
-                } else if (wm === "rltb" || wm === "rl") {
-
-                    isd_element.styleAttrs[imscStyles.byName.direction.qname] = "rtl";
-
-                }
-
-            }
-        }
-
-        /* inherited styling */
-
-        if (parent !== null) {
-
-            for (var j in imscStyles.all) {
-
-                var sa = imscStyles.all[j];
-
-                /* textDecoration has special inheritance rules */
-
-                if (sa.qname === imscStyles.byName.textDecoration.qname) {
-
-                    /* handle both textDecoration inheritance and specification */
-
-                    var ps = parent.styleAttrs[sa.qname];
-                    var es = isd_element.styleAttrs[sa.qname];
-                    var outs = [];
-
-                    if (es === undefined) {
-
-                        outs = ps;
-
-                    } else if (es.indexOf("none") === -1) {
-
-                        if ((es.indexOf("noUnderline") === -1 &&
-                            ps.indexOf("underline") !== -1) ||
-                            es.indexOf("underline") !== -1) {
-
-                            outs.push("underline");
-
-                        }
-
-                        if ((es.indexOf("noLineThrough") === -1 &&
-                            ps.indexOf("lineThrough") !== -1) ||
-                            es.indexOf("lineThrough") !== -1) {
-
-                            outs.push("lineThrough");
-
-                        }
-
-                        if ((es.indexOf("noOverline") === -1 &&
-                            ps.indexOf("overline") !== -1) ||
-                            es.indexOf("overline") !== -1) {
-
-                            outs.push("overline");
-
-                        }
-
-                    } else {
-
-                        outs.push("none");
-
-                    }
-
-                    isd_element.styleAttrs[sa.qname] = outs;
-
-                } else if (sa.inherit &&
-                    (sa.qname in parent.styleAttrs) &&
-                    !(sa.qname in isd_element.styleAttrs)) {
-
-                    isd_element.styleAttrs[sa.qname] = parent.styleAttrs[sa.qname];
-
-                }
-
-            }
-
-        }
-
-        /* initial value styling */
-
-        for (var k in imscStyles.all) {
-
-            var ivs = imscStyles.all[k];
-
-            /* skip if value is already specified */
-
-            if (ivs.qname in isd_element.styleAttrs) continue;
-
-            /* apply initial value to elements other than region only if non-inherited */
-
-            if (isd_element.kind === 'region' || (ivs.inherit === false && ivs.initial !== null)) {
-
-                isd_element.styleAttrs[ivs.qname] = ivs.parse(ivs.initial);
-
-                /* keep track of the style as specified */
-
-                spec_attr[ivs.qname] = true;
-
-            }
-
-        }
-
-        /* compute styles (only for non-inherited styles) */
-        /* TODO: get rid of spec_attr */
-
-        for (var z in imscStyles.all) {
-
-            var cs = imscStyles.all[z];
-
-            if (!(cs.qname in spec_attr)) continue;
-
-            if (cs.compute !== null) {
-
-                var cstyle = cs.compute(
-                    /*doc, parent, element, attr, context*/
-                    doc,
-                    parent,
-                    isd_element,
-                    isd_element.styleAttrs[cs.qname],
-                    context
-                    );
-
-                if (cstyle !== null) {
-                    isd_element.styleAttrs[cs.qname] = cstyle;
-                } else {
-                    reportError(errorHandler, "Style '" + cs.qname + "' on element '" + isd_element.kind + "' cannot be computed");
-                }
-            }
-
-        }
-
-        /* prune if tts:display is none */
-
-        if (isd_element.styleAttrs[imscStyles.byName.display.qname] === "none")
-            return null;
-
-        /* process contents of the element */
-
-        var contents;
-
-        if (parent === null) {
-
-            /* we are processing the region */
-
-            if (body === null) {
-
-                /* if there is no body, still process the region but with empty content */
-
-                contents = [];
-
-            } else {
-
-                /*use the body element as contents */
-
-                contents = [body];
-
-            }
-
-        } else if ('contents' in elem) {
-
-            contents = elem.contents;
-
-        }
-
-        for (var x in contents) {
-
-            var c = isdProcessContentElement(doc, offset, region, body, isd_element, associated_region_id, contents[x], errorHandler, context);
-
-            /* 
-             * keep child element only if they are non-null and their region match 
-             * the region of this element
-             */
-
-            if (c !== null) {
-
-                isd_element.contents.push(c.element);
-
-            }
-
-        }
-
-        /* compute used value of lineHeight="normal" */
-
-        /*        if (isd_element.styleAttrs[imscStyles.byName.lineHeight.qname] === "normal"  ) {
-         
-         isd_element.styleAttrs[imscStyles.byName.lineHeight.qname] =
-         isd_element.styleAttrs[imscStyles.byName.fontSize.qname] * 1.2;
-         
-         }
-         */
-
-        /* remove styles that are not applicable */
-
-        for (var qnameb in isd_element.styleAttrs) {
-            var da = imscStyles.byQName[qnameb];
-
-            if (da.applies.indexOf(isd_element.kind) === -1) {
-                delete isd_element.styleAttrs[qnameb];
-            }
-        }
-
-        /* collapse white space if space is "default" */
-
-        if (isd_element.kind === 'span' && isd_element.text && isd_element.space === "default") {
-
-            var trimmedspan = isd_element.text.replace(/\s+/g, ' ');
-
-            isd_element.text = trimmedspan;
-
-        }
-
-        /* trim whitespace around explicit line breaks */
-
-        if (isd_element.kind === 'p') {
-
-            var elist = [];
-
-            constructSpanList(isd_element, elist);
-
-            var l = 0;
-
-            var state = "after_br";
-            var br_pos = 0;
-
-            while (true) {
-
-                if (state === "after_br") {
-
-                    if (l >= elist.length || elist[l].kind === "br") {
-
-                        state = "before_br";
-                        br_pos = l;
-                        l--;
-
-                    } else {
-
-                        if (elist[l].space !== "preserve") {
-
-                            elist[l].text = elist[l].text.replace(/^\s+/g, '');
-
-                        }
-
-                        if (elist[l].text.length > 0) {
-
-                            state = "looking_br";
-                            l++;
-
-                        } else {
-
-                            elist.splice(l, 1);
-
-                        }
-
-                    }
-
-                } else if (state === "before_br") {
-
-                    if (l < 0 || elist[l].kind === "br") {
-
-                        state = "after_br";
-                        l = br_pos + 1;
-
-                        if (l >= elist.length) break;
-
-                    } else {
-
-                        if (elist[l].space !== "preserve") {
-
-                            elist[l].text = elist[l].text.replace(/\s+$/g, '');
-
-                        }
-
-                        if (elist[l].text.length > 0) {
-
-                            state = "after_br";
-                            l = br_pos + 1;
-
-                            if (l >= elist.length) break;
-
-                        } else {
-
-                            elist.splice(l, 1);
-                            l--;
-
-                        }
-
-                    }
-
-                } else {
-
-                    if (l >= elist.length || elist[l].kind === "br") {
-
-                        state = "before_br";
-                        br_pos = l;
-                        l--;
-
-                    } else {
-
-                        l++;
-
-                    }
-
-                }
-
-            }
-            
-            pruneEmptySpans(isd_element);
-
-        }
-
-        /* keep element if:
-         * * contains a background image
-         * * <br/>
-         * * if there are children
-         * * if <span> and has text
-         * * if region and showBackground = always
-         */
-
-        if ((isd_element.kind === 'div' && imscStyles.byName.backgroundImage.qname in isd_element.styleAttrs) ||
-            isd_element.kind === 'br' ||
-            ('contents' in isd_element && isd_element.contents.length > 0) ||
-            (isd_element.kind === 'span' && isd_element.text !== null) ||
-            (isd_element.kind === 'region' &&
-                isd_element.styleAttrs[imscStyles.byName.showBackground.qname] === 'always')) {
-
-            return {
-                region_id: associated_region_id,
-                element: isd_element
-            };
-        }
-
-        return null;
-    }
-
-    function constructSpanList(element, elist) {
-
-        if ('contents' in element) {
-
-            for (var i in element.contents) {
-                constructSpanList(element.contents[i], elist);
-            }
-
-        } else {
-
-            elist.push(element);
-
-        }
-
-    }
-
-    function pruneEmptySpans(element) {
-
-        if (element.kind === 'br') {
-            
-            return false;
-            
-        } else if ('text' in element) {
-            
-            return  element.text.length === 0;
-            
-        } else if ('contents' in element) {
-            
-            var i = element.contents.length;
-
-            while (i--) {
-                
-                if (pruneEmptySpans(element.contents[i])) {
-                    element.contents.splice(i, 1);
-                }
-                
-            }
-            
-            return element.contents.length === 0;
-
-        }
-    }
-
-    function ISD(tt) {
-        this.contents = [];
-        this.aspectRatio = tt.aspectRatio;
-    }
-
-    function ISDContentElement(ttelem) {
-
-        /* assume the element is a region if it does not have a kind */
-
-        this.kind = ttelem.kind || 'region';
-        
-        /* copy id */
-        
-        if (ttelem.id) {
-            this.id = ttelem.id;
-        }
-
-        /* deep copy of style attributes */
-        this.styleAttrs = {};
-
-        for (var sname in ttelem.styleAttrs) {
-
-            this.styleAttrs[sname] =
-                ttelem.styleAttrs[sname];
-        }
-
-        /* TODO: clean this! */
-
-        if ('text' in ttelem) {
-
-            this.text = ttelem.text;
-
-        } else if (ttelem.kind !== 'br') {
-            
-            this.contents = [];
-        }
-
-        if ('space' in ttelem) {
-
-            this.space = ttelem.space;
-        }
-    }
-
-
-    /*
-     * ERROR HANDLING UTILITY FUNCTIONS
-     * 
-     */
-
-    function reportInfo(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.info && errorHandler.info(msg))
-            throw msg;
-
-    }
-
-    function reportWarning(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.warn && errorHandler.warn(msg))
-            throw msg;
-
-    }
-
-    function reportError(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.error && errorHandler.error(msg))
-            throw msg;
-
-    }
-
-    function reportFatal(errorHandler, msg) {
-
-        if (errorHandler && errorHandler.fatal)
-            errorHandler.fatal(msg);
-
-        throw msg;
-
-    }
-
-
-})(typeof exports === 'undefined' ? this.imscISD = {} : exports,
-    typeof imscNames === 'undefined' ? _dereq_(39) : imscNames,
-    typeof imscStyles === 'undefined' ? _dereq_(40) : imscStyles
-    );
-
-},{"39":39,"40":40}],38:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-exports.generateISD = _dereq_(37).generateISD;
-exports.fromXML = _dereq_(35).fromXML;
-exports.renderHTML = _dereq_(36).render;
-},{"35":35,"36":36,"37":37}],39:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscNames
- */
-
-;
-(function (imscNames) { // wrapper for non-node envs
-
-    imscNames.ns_tt = "http://www.w3.org/ns/ttml";
-    imscNames.ns_tts = "http://www.w3.org/ns/ttml#styling";
-    imscNames.ns_ttp = "http://www.w3.org/ns/ttml#parameter";
-    imscNames.ns_xml = "http://www.w3.org/XML/1998/namespace";
-    imscNames.ns_itts = "http://www.w3.org/ns/ttml/profile/imsc1#styling";
-    imscNames.ns_ittp = "http://www.w3.org/ns/ttml/profile/imsc1#parameter";
-    imscNames.ns_smpte = "http://www.smpte-ra.org/schemas/2052-1/2010/smpte-tt";
-    imscNames.ns_ebutts = "urn:ebu:tt:style";
-    
-})(typeof exports === 'undefined' ? this.imscNames = {} : exports);
-
-
-
-
-
-},{}],40:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscStyles
- */
-
-;
-(function (imscStyles, imscNames, imscUtils) { // wrapper for non-node envs
-
-    function StylingAttributeDefinition(ns, name, initialValue, appliesTo, isInherit, isAnimatable, parseFunc, computeFunc) {
-        this.name = name;
-        this.ns = ns;
-        this.qname = ns + " " + name;
-        this.inherit = isInherit;
-        this.animatable = isAnimatable;
-        this.initial = initialValue;
-        this.applies = appliesTo;
-        this.parse = parseFunc;
-        this.compute = computeFunc;
-    }
-
-    imscStyles.all = [
-
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "backgroundColor",
-                "transparent",
-                ['body', 'div', 'p', 'region', 'span'],
-                false,
-                true,
-                imscUtils.parseColor,
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "color",
-                "white",
-                ['span'],
-                true,
-                true,
-                imscUtils.parseColor,
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "direction",
-                "ltr",
-                ['p', 'span'],
-                true,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "display",
-                "auto",
-                ['body', 'div', 'p', 'region', 'span'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "displayAlign",
-                "before",
-                ['region'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "extent",
-                "auto",
-                ['tt', 'region'],
-                false,
-                true,
-                function (str) {
-
-                    if (str === "auto") {
-
-                        return str;
-
-                    } else {
-
-                        var s = str.split(" ");
-                        if (s.length !== 2) return null;
-                        var w = imscUtils.parseLength(s[0]);
-                        var h = imscUtils.parseLength(s[1]);
-                        if (!h || !w) return null;
-                        return {'h': h, 'w': w};
-                    }
-
-                },
-                function (doc, parent, element, attr, context) {
-
-                    var h;
-                    var w;
-
-                    if (attr === "auto") {
-
-                        h = 1;
-
-                    } else if (attr.h.unit === "%") {
-
-                        h = attr.h.value / 100;
-
-                    } else if (attr.h.unit === "px") {
-
-                        h = attr.h.value / doc.pxDimensions.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    if (attr === "auto") {
-
-                        w = 1;
-
-                    } else if (attr.w.unit === "%") {
-
-                        w = attr.w.value / 100;
-
-                    } else if (attr.w.unit === "px") {
-
-                        w = attr.w.value / doc.pxDimensions.w;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    return {'h': h, 'w': w};
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "fontFamily",
-                "default",
-                ['span'],
-                true,
-                true,
-                function (str) {
-                    var ffs = str.split(",");
-                    var rslt = [];
-
-                    for (var i in ffs) {
-
-                        if (ffs[i].charAt(0) !== "'" && ffs[i].charAt(0) !== '"') {
-
-                            if (ffs[i] === "default") {
-
-                                /* per IMSC1 */
-
-                                rslt.push("monospaceSerif");
-
-                            } else {
-
-                                rslt.push(ffs[i]);
-
-                            }
-
-                        } else {
-
-                            rslt.push(ffs[i]);
-
-                        }
-
-                    }
-
-                    return rslt;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "fontSize",
-                "1c",
-                ['span'],
-                true,
-                true,
-                imscUtils.parseLength,
-                function (doc, parent, element, attr, context) {
-
-                    var fs;
-
-                    if (attr.unit === "%") {
-
-                        if (parent !== null) {
-
-                            fs = parent.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value / 100;
-
-                        } else {
-
-                            /* region, so percent of 1c */
-
-                            fs = attr.value / 100 / doc.cellResolution.h;
-
-                        }
-
-                    } else if (attr.unit === "em") {
-
-                        if (parent !== null) {
-
-                            fs = parent.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value;
-
-                        } else {
-
-                            /* region, so percent of 1c */
-
-                            fs = attr.value / doc.cellResolution.h;
-
-                        }
-
-                    } else if (attr.unit === "c") {
-
-                        fs = attr.value / doc.cellResolution.h;
-
-                    } else if (attr.unit === "px") {
-
-                        fs = attr.value / doc.pxDimensions.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    return fs;
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "fontStyle",
-                "normal",
-                ['span'],
-                true,
-                true,
-                function (str) {
-                    /* TODO: handle font style */
-
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "fontWeight",
-                "normal",
-                ['span'],
-                true,
-                true,
-                function (str) {
-                    /* TODO: handle font weight */
-
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "lineHeight",
-                "normal",
-                ['p'],
-                true,
-                true,
-                function (str) {
-                    if (str === "normal") {
-                        return str;
-                    } else {
-                        return imscUtils.parseLength(str);
-                    }
-                },
-                function (doc, parent, element, attr, context) {
-
-                    var lh;
-
-                    if (attr === "normal") {
-
-                        /* inherit normal per https://github.com/w3c/ttml1/issues/220 */
-
-                        lh = attr;
-
-                    } else if (attr.unit === "%") {
-
-                        lh = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value / 100;
-
-                    } else if (attr.unit === "em") {
-
-                        lh = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.value;
-
-                    } else if (attr.unit === "c") {
-
-                        lh = attr.value / doc.cellResolution.h;
-
-                    } else if (attr.unit === "px") {
-
-                        /* TODO: handle error if no px dimensions are provided */
-
-                        lh = attr.value / doc.pxDimensions.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    /* TODO: create a Length constructor */
-
-                    return lh;
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "opacity",
-                1.0,
-                ['region'],
-                false,
-                true,
-                parseFloat,
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "origin",
-                "auto",
-                ['region'],
-                false,
-                true,
-                function (str) {
-
-                    if (str === "auto") {
-
-                        return str;
-
-                    } else {
-
-                        var s = str.split(" ");
-                        if (s.length !== 2) return null;
-                        var w = imscUtils.parseLength(s[0]);
-                        var h = imscUtils.parseLength(s[1]);
-                        if (!h || !w) return null;
-                        return {'h': h, 'w': w};
-                    }
-
-                },
-                function (doc, parent, element, attr, context) {
-
-                    var h;
-                    var w;
-
-                    if (attr === "auto") {
-
-                        h = 0;
-
-                    } else if (attr.h.unit === "%") {
-
-                        h = attr.h.value / 100;
-
-                    } else if (attr.h.unit === "px") {
-
-                        h = attr.h.value / doc.pxDimensions.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    if (attr === "auto") {
-
-                        w = 0;
-
-                    } else if (attr.w.unit === "%") {
-
-                        w = attr.w.value / 100;
-
-                    } else if (attr.w.unit === "px") {
-
-                        w = attr.w.value / doc.pxDimensions.w;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    return {'h': h, 'w': w};
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "overflow",
-                "hidden",
-                ['region'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "padding",
-                "0px",
-                ['region'],
-                false,
-                true,
-                function (str) {
-
-                    var s = str.split(" ");
-                    if (s.length > 4) return null;
-                    var r = [];
-                    for (var i in s) {
-
-                        var l = imscUtils.parseLength(s[i]);
-                        if (!l) return null;
-                        r.push(l);
-                    }
-
-                    return r;
-                },
-                function (doc, parent, element, attr, context) {
-
-                    var padding;
-
-                    /* TODO: make sure we are in region */
-
-                    /*
-                     * expand padding shortcuts to 
-                     * [before, end, after, start]
-                     * 
-                     */
-
-                    if (attr.length === 1) {
-
-                        padding = [attr[0], attr[0], attr[0], attr[0]];
-
-                    } else if (attr.length === 2) {
-
-                        padding = [attr[0], attr[1], attr[0], attr[1]];
-
-                    } else if (attr.length === 3) {
-
-                        padding = [attr[0], attr[1], attr[2], attr[1]];
-
-                    } else if (attr.length === 4) {
-
-                        padding = [attr[0], attr[1], attr[2], attr[3]];
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    /* TODO: take into account tts:direction */
-
-                    /* 
-                     * transform [before, end, after, start] according to writingMode to 
-                     * [top,left,bottom,right]
-                     * 
-                     */
-
-                    var dir = element.styleAttrs[imscStyles.byName.writingMode.qname];
-
-                    if (dir === "lrtb" || dir === "lr") {
-
-                        padding = [padding[0], padding[3], padding[2], padding[1]];
-
-                    } else if (dir === "rltb" || dir === "rl") {
-
-                        padding = [padding[0], padding[1], padding[2], padding[3]];
-
-                    } else if (dir === "tblr") {
-
-                        padding = [padding[3], padding[0], padding[1], padding[2]];
-
-                    } else if (dir === "tbrl" || dir === "tb") {
-
-                        padding = [padding[3], padding[2], padding[1], padding[0]];
-
-                    } else {
-
-                        return null;
-
-                    }
-
-                    var out = [];
-
-                    for (var i in padding) {
-
-                        if (padding[i].value === 0) {
-
-                            out[i] = 0;
-
-                        } else if (padding[i].unit === "%") {
-
-                            if (i === "0" || i === "2") {
-
-                                out[i] = element.styleAttrs[imscStyles.byName.extent.qname].h * padding[i].value / 100;
-
-                            } else {
-
-                                out[i] = element.styleAttrs[imscStyles.byName.extent.qname].w * padding[i].value / 100;
-                            }
-
-                        } else if (padding[i].unit === "em") {
-
-                            out[i] = element.styleAttrs[imscStyles.byName.fontSize.qname] * padding[i].value;
-
-                        } else if (padding[i].unit === "c") {
-
-                            out[i] = padding[i].value / doc.cellResolution.h;
-
-                        } else if (padding[i].unit === "px") {
-                            
-                            if (i === "0" || i === "2") {
-
-                                out[i] = padding[i].value / doc.pxDimensions.h;
-
-                            } else {
-
-                                out[i] = padding[i].value / doc.pxDimensions.w;
-                            }
-                            
-                        } else {
-
-                            return null;
-
-                        }
-                    }
-
-
-                    return out;
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "showBackground",
-                "always",
-                ['region'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "textAlign",
-                "start",
-                ['p'],
-                true,
-                true,
-                function (str) {
-                    return str;
-                },
-                function (doc, parent, element, attr, context) {
-                    
-                    /* Section 7.16.9 of XSL */
-                    
-                    if (attr === "left") {
-                        
-                        return "start";
-                        
-                    } else if (attr === "right") {
-                        
-                        return "end";
-                        
-                    } else {
-                        
-                        return attr;
-                        
-                    }
-                }
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "textDecoration",
-                "none",
-                ['span'],
-                true,
-                true,
-                function (str) {
-                    return str.split(" ");
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "textOutline",
-                "none",
-                ['span'],
-                true,
-                true,
-                function (str) {
-
-                    /*
-                     * returns {c: <color>?, thichness: <length>} | "none"
-                     * 
-                     */
-
-                    if (str === "none") {
-
-                        return str;
-
-                    } else {
-
-                        var r = {};
-                        var s = str.split(" ");
-                        if (s.length === 0 || s.length > 2) return null;
-                        var c = imscUtils.parseColor(s[0]);
-                       
-                        r.color = c;
-                        
-                        if (c !== null) s.shift();
-
-                        if (s.length !== 1) return null;
-
-                        var l = imscUtils.parseLength(s[0]);
-
-                        if (!l) return null;
-
-                        r.thickness = l;
-
-                        return r;
-                    }
-
-                },
-                function (doc, parent, element, attr, context) {
-
-                    /*
-                     * returns {color: <color>, thickness: <norm length>}
-                     * 
-                     */
-
-                    if (attr === "none") return attr;
-
-                    var rslt = {};
-
-                    if (attr.color === null) {
-                        
-                        rslt.color = element.styleAttrs[imscStyles.byName.color.qname];
-                        
-                    } else {
-                        
-                        rslt.color = attr.color;
-
-                    }
-
-                    if (attr.thickness.unit === "%") {
-
-                        rslt.thickness = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.thickness.value / 100;
-
-                    } else if (attr.thickness.unit === "em") {
-
-                        rslt.thickness = element.styleAttrs[imscStyles.byName.fontSize.qname] * attr.thickness.value;
-
-                    } else if (attr.thickness.unit === "c") {
-
-                        rslt.thickness = attr.thickness.value / doc.cellResolution.h;
-
-                    } else if (attr.thickness.unit === "px") {
-
-                        rslt.thickness = attr.thickness.value / doc.pxDimensions.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-
-
-                    return rslt;
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "unicodeBidi",
-                "normal",
-                ['span', 'p'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "visibility",
-                "visible",
-                ['body', 'div', 'p', 'region', 'span'],
-                true,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "wrapOption",
-                "wrap",
-                ['span'],
-                true,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "writingMode",
-                "lrtb",
-                ['region'],
-                false,
-                true,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_tts,
-                "zIndex",
-                "auto",
-                ['region'],
-                false,
-                true,
-                function (str) {
-                    
-                    var rslt;
-                    
-                    if (str === 'auto') {
-                        
-                        rslt = str;
-                        
-                    } else {
-                        
-                        rslt = parseInt(str);
-                        
-                        if (isNaN(rslt)) {
-                            rslt = null;
-                        }
-                        
-                    }
-                    
-                    return rslt;
-                },
-                null
-                ),
-        new StylingAttributeDefinition(
-                imscNames.ns_ebutts,
-                "linePadding",
-                "0c",
-                ['p'],
-                true,
-                false,
-                imscUtils.parseLength,
-                function (doc, parent, element, attr, context) {
-                    if (attr.unit === "c") {
-
-                        return attr.value / doc.cellResolution.h;
-
-                    } else {
-
-                        return null;
-
-                    }
-                }
-        ),
-        new StylingAttributeDefinition(
-                imscNames.ns_ebutts,
-                "multiRowAlign",
-                "auto",
-                ['p'],
-                true,
-                false,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-
-        new StylingAttributeDefinition(
-                imscNames.ns_smpte,
-                "backgroundImage",
-                null,
-                ['div'],
-                false,
-                false,
-                function (str) {
-                    return str;
-                },
-                null
-                ),
-
-        new StylingAttributeDefinition(
-                imscNames.ns_itts,
-                "forcedDisplay",
-                "false",
-                ['body', 'div', 'p', 'region', 'span'],
-                true,
-                true,
-                function (str) {
-                    return str === 'true' ? true : false;
-                },
-                null
-                ),
-
-        new StylingAttributeDefinition(
-                imscNames.ns_itts,
-                "fillLineGap",
-                "false",
-                ['p'],
-                true,
-                true,
-                function (str) {
-                    return str === 'true' ? true : false;
-                },
-                null
-                )
-    ];
-
-    /* TODO: allow null parse function */
-
-    imscStyles.byQName = {};
-    for (var i in imscStyles.all) {
-
-        imscStyles.byQName[imscStyles.all[i].qname] = imscStyles.all[i];
-    }
-
-    imscStyles.byName = {};
-    for (var j in imscStyles.all) {
-
-        imscStyles.byName[imscStyles.all[j].name] = imscStyles.all[j];
-    }
-
-})(typeof exports === 'undefined' ? this.imscStyles = {} : exports,
-        typeof imscNames === 'undefined' ? _dereq_(39) : imscNames,
-        typeof imscUtils === 'undefined' ? _dereq_(41) : imscUtils);
-
-},{"39":39,"41":41}],41:[function(_dereq_,module,exports){
-/* 
- * Copyright (c) 2016, Pierre-Anthony Lemieux <pal@sandflow.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- * * Redistributions of source code must retain the above copyright notice, this
- *   list of conditions and the following disclaimer.
- * * Redistributions in binary form must reproduce the above copyright notice,
- *   this list of conditions and the following disclaimer in the documentation
- *   and/or other materials provided with the distribution.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-/**
- * @module imscUtils
- */
-
-;
-(function (imscUtils) { // wrapper for non-node envs
-    
-    /* Documents the error handler interface */
-    
-    /**
-     * @classdesc Generic interface for handling events. The interface exposes four
-     * methods:
-     * * <pre>info</pre>: unusual event that does not result in an inconsistent state
-     * * <pre>warn</pre>: unexpected event that should not result in an inconsistent state
-     * * <pre>error</pre>: unexpected event that may result in an inconsistent state
-     * * <pre>fatal</pre>: unexpected event that results in an inconsistent state
-     *   and termination of processing
-     * Each method takes a single <pre>string</pre> describing the event as argument,
-     * and returns a single <pre>boolean</pre>, which terminates processing if <pre>true</pre>.
-     *
-     * @name ErrorHandler
-     * @class
-     */
-
-
-    /*
-     * Parses a TTML color expression
-     * 
-     */
-
-    var HEX_COLOR_RE = /#([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})([0-9a-fA-F]{2})?/;
-    var DEC_COLOR_RE = /rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
-    var DEC_COLORA_RE = /rgba\(\s*(\d+),\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/;
-    var NAMED_COLOR = {
-        transparent: [0, 0, 0, 0],
-        black: [0, 0, 0, 255],
-        silver: [192, 192, 192, 255],
-        gray: [128, 128, 128, 255],
-        white: [255, 255, 255, 255],
-        maroon: [128, 0, 0, 255],
-        red: [255, 0, 0, 255],
-        purple: [128, 0, 128, 255],
-        fuchsia: [255, 0, 255, 255],
-        magenta: [255, 0, 255, 255],
-        green: [0, 128, 0, 255],
-        lime: [0, 255, 0, 255],
-        olive: [128, 128, 0, 255],
-        yellow: [255, 255, 0, 255],
-        navy: [0, 0, 128, 255],
-        blue: [0, 0, 255, 255],
-        teal: [0, 128, 128, 255],
-        aqua: [0, 255, 255, 255],
-        cyan: [0, 255, 255, 255]
-    };
-
-    imscUtils.parseColor = function (str) {
-
-        var m;
-        var r = null;
-        if (str in NAMED_COLOR) {
-
-            r = NAMED_COLOR[str];
-
-        } else if ((m = HEX_COLOR_RE.exec(str)) !== null) {
-
-            r = [parseInt(m[1], 16),
-                parseInt(m[2], 16),
-                parseInt(m[3], 16),
-                (m[4] !== undefined ? parseInt(m[4], 16) : 255)];
-        } else if ((m = DEC_COLOR_RE.exec(str)) !== null) {
-
-            r = [parseInt(m[1]),
-                parseInt(m[2]),
-                parseInt(m[3]),
-                255];
-        } else if ((m = DEC_COLORA_RE.exec(str)) !== null) {
-
-            r = [parseInt(m[1]),
-                parseInt(m[2]),
-                parseInt(m[3]),
-                parseInt(m[4])];
-        }
-
-        return r;
-    };
-
-    var LENGTH_RE = /^((?:\+|\-)?\d*(?:\.\d+)?)(px|em|c|%)$/;
-
-    imscUtils.parseLength = function (str) {
-
-        var m;
-
-        var r = null;
-
-        if ((m = LENGTH_RE.exec(str)) !== null) {
-
-            r = {value: parseFloat(m[1]), unit: m[2]};
-        }
-
-        return r;
-    };
-
-})(typeof exports === 'undefined' ? this.imscUtils = {} : exports);
-
-},{}],42:[function(_dereq_,module,exports){
+},{"34":34,"35":35,"9":9}],45:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -14338,15 +14637,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _EventBus = _dereq_(43);
+var _EventBus = _dereq_(46);
 
 var _EventBus2 = _interopRequireDefault(_EventBus);
 
-var _eventsEvents = _dereq_(49);
+var _eventsEvents = _dereq_(52);
 
 var _eventsEvents2 = _interopRequireDefault(_eventsEvents);
 
-var _FactoryMaker = _dereq_(44);
+var _FactoryMaker = _dereq_(47);
 
 var _FactoryMaker2 = _interopRequireDefault(_FactoryMaker);
 
@@ -14607,7 +14906,7 @@ _FactoryMaker2['default'].updateSingletonFactory(Debug.__dashjs_factory_name, fa
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"43":43,"44":44,"49":49}],43:[function(_dereq_,module,exports){
+},{"46":46,"47":47,"52":52}],46:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -14646,7 +14945,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _FactoryMaker = _dereq_(44);
+var _FactoryMaker = _dereq_(47);
 
 var _FactoryMaker2 = _interopRequireDefault(_FactoryMaker);
 
@@ -14750,7 +15049,7 @@ _FactoryMaker2['default'].updateSingletonFactory(EventBus.__dashjs_factory_name,
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44}],44:[function(_dereq_,module,exports){
+},{"47":47}],47:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15012,20 +15311,20 @@ var FactoryMaker = (function () {
 exports["default"] = FactoryMaker;
 module.exports = exports["default"];
 
-},{}],45:[function(_dereq_,module,exports){
+},{}],48:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
     value: true
 });
 exports.getVersionString = getVersionString;
-var VERSION = '2.9.1';
+var VERSION = '2.9.2';
 
 function getVersionString() {
     return VERSION;
 }
 
-},{}],46:[function(_dereq_,module,exports){
+},{}],49:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15070,14 +15369,13 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _ErrorsBase2 = _dereq_(47);
+var _ErrorsBase2 = _dereq_(50);
 
 var _ErrorsBase3 = _interopRequireDefault(_ErrorsBase2);
 
 /**
  * Errors declaration
  * @class
- * @ignore
  */
 
 var Errors = (function (_ErrorsBase) {
@@ -15087,53 +15385,82 @@ var Errors = (function (_ErrorsBase) {
     _classCallCheck(this, Errors);
 
     _get(Object.getPrototypeOf(Errors.prototype), 'constructor', this).call(this);
+    /**
+     * Error code returned when a manifest parsing error occurs
+     */
     this.MANIFEST_LOADER_PARSING_FAILURE_ERROR_CODE = 10;
-    this.MANIFEST_LOADER_LOADING_FAILURE_ERROR_CODE = 12;
-    this.XLINK_LOADER_LOADING_FAILURE_ERROR_CODE = 13;
-    this.SEGMENTS_UPDATE_FAILED_ERROR_CODE = 14;
-    this.SEGMENTS_UNAVAILABLE_ERROR_CODE = 15;
-    this.SEGMENT_BASE_LOADER_ERROR_CODE = 16;
-    this.TIME_SYNC_FAILED_ERROR_CODE = 17;
-    this.FRAGMENT_LOADER_LOADING_FAILURE_ERROR_CODE = 18;
-    this.FRAGMENT_LOADER_NULL_REQUEST_ERROR_CODE = 19;
-    this.URL_RESOLUTION_FAILED_GENERIC_ERROR_CODE = 20;
-    this.APPEND_ERROR_CODE = 21;
-    this.REMOVE_ERROR_CODE = 22;
-    this.DATA_UPDATE_FAILED_ERROR_CODE = 23;
+    /**
+     * Error code returned when a manifest loading error occurs
+     */
+    this.MANIFEST_LOADER_LOADING_FAILURE_ERROR_CODE = 11;
+    /**
+     * Error code returned when a xlink loading error occurs
+     */
+    this.XLINK_LOADER_LOADING_FAILURE_ERROR_CODE = 12;
+    /**
+     * Error code returned when the update of segments list has failed
+     */
+    this.SEGMENTS_UPDATE_FAILED_ERROR_CODE = 13;
+    this.SEGMENTS_UNAVAILABLE_ERROR_CODE = 14;
+    this.SEGMENT_BASE_LOADER_ERROR_CODE = 15;
+    this.TIME_SYNC_FAILED_ERROR_CODE = 16;
+    this.FRAGMENT_LOADER_LOADING_FAILURE_ERROR_CODE = 17;
+    this.FRAGMENT_LOADER_NULL_REQUEST_ERROR_CODE = 18;
+    this.URL_RESOLUTION_FAILED_GENERIC_ERROR_CODE = 19;
+    this.APPEND_ERROR_CODE = 20;
+    this.REMOVE_ERROR_CODE = 21;
+    this.DATA_UPDATE_FAILED_ERROR_CODE = 22;
+    /**
+     * Error code returned when MediaSource is not supported by the browser
+     */
+    this.CAPABILITY_MEDIASOURCE_ERROR_CODE = 23;
+    /**
+     * Error code returned when Protected contents are not supported
+     */
+    this.CAPABILITY_MEDIAKEYS_ERROR_CODE = 24;
 
-    this.CAPABILITY_MEDIASOURCE_ERROR_CODE = 24;
-    this.CAPABILITY_MEDIAKEYS_ERROR_CODE = 25;
-
-    this.DOWNLOAD_ERROR_ID_MANIFEST_CODE = 26;
+    this.DOWNLOAD_ERROR_ID_MANIFEST_CODE = 25;
     /*
      *@deprecated
      */
     this.DOWNLOAD_ERROR_ID_MANIFEST = 'manifest';
-    this.DOWNLOAD_ERROR_ID_SIDX_CODE = 27;
-    this.DOWNLOAD_ERROR_ID_CONTENT_CODE = 28;
+    this.DOWNLOAD_ERROR_ID_SIDX_CODE = 26;
+    this.DOWNLOAD_ERROR_ID_CONTENT_CODE = 27;
+
     /*
      *@deprecated
      */
     this.DOWNLOAD_ERROR_ID_CONTENT = 'content';
-    this.DOWNLOAD_ERROR_ID_INITIALIZATION_CODE = 29;
+    this.DOWNLOAD_ERROR_ID_INITIALIZATION_CODE = 28;
     /*
      *@deprecated
      */
     this.DOWNLOAD_ERROR_ID_INITIALIZATION = 'initialization';
-    this.DOWNLOAD_ERROR_ID_XLINK_CODE = 30;
+    this.DOWNLOAD_ERROR_ID_XLINK_CODE = 29;
     /*
      *@deprecated
      */
     this.DOWNLOAD_ERROR_ID_XLINK = 'xlink';
 
-    this.MANIFEST_ERROR_ID_CODEC_CODE = 31;
-    this.MANIFEST_ERROR_ID_PARSE_CODE = 32;
-    this.MANIFEST_ERROR_ID_NOSTREAMS_CODE = 33;
+    this.MANIFEST_ERROR_ID_CODEC_CODE = 30;
+    this.MANIFEST_ERROR_ID_PARSE_CODE = 31;
 
-    this.TIMED_TEXT_ERROR_ID_PARSE_CODE = 34;
-
-    this.MANIFEST_ERROR_ID_MULTIPLEXED_CODE = 35;
-    this.MEDIASOURCE_TYPE_UNSUPPORTED_CODE = 36;
+    /**
+     * Error code returned when no stream (period) has been detected in the manifest
+     */
+    this.MANIFEST_ERROR_ID_NOSTREAMS_CODE = 32;
+    /**
+     * Error code returned when something wrong has append during subtitles parsing (TTML or VTT)
+     */
+    this.TIMED_TEXT_ERROR_ID_PARSE_CODE = 33;
+    /**
+     * Error code returned when a 'muxed' media type has been detected in the manifest. This type is not supported
+     */
+    this.MANIFEST_ERROR_ID_MULTIPLEXED_CODE = 34;
+    /**
+     * Error code returned when a media source type is not supported
+     */
+    this.MEDIASOURCE_TYPE_UNSUPPORTED_CODE = 35;
 
     this.MANIFEST_LOADER_PARSING_FAILURE_ERROR_MESSAGE = 'parsing failed for ';
     this.MANIFEST_LOADER_LOADING_FAILURE_ERROR_MESSAGE = 'Failed loading manifest: ';
@@ -15161,7 +15488,7 @@ var errors = new Errors();
 exports['default'] = errors;
 module.exports = exports['default'];
 
-},{"47":47}],47:[function(_dereq_,module,exports){
+},{"50":50}],50:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15233,7 +15560,7 @@ var ErrorsBase = (function () {
 exports['default'] = ErrorsBase;
 module.exports = exports['default'];
 
-},{}],48:[function(_dereq_,module,exports){
+},{}],51:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15278,7 +15605,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _EventsBase2 = _dereq_(50);
+var _EventsBase2 = _dereq_(53);
 
 var _EventsBase3 = _interopRequireDefault(_EventsBase2);
 
@@ -15342,7 +15669,7 @@ var CoreEvents = (function (_EventsBase) {
 exports['default'] = CoreEvents;
 module.exports = exports['default'];
 
-},{"50":50}],49:[function(_dereq_,module,exports){
+},{"53":53}],52:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15391,7 +15718,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _CoreEvents2 = _dereq_(48);
+var _CoreEvents2 = _dereq_(51);
 
 var _CoreEvents3 = _interopRequireDefault(_CoreEvents2);
 
@@ -15411,7 +15738,7 @@ var events = new Events();
 exports['default'] = events;
 module.exports = exports['default'];
 
-},{"48":48}],50:[function(_dereq_,module,exports){
+},{"51":51}],53:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15483,7 +15810,7 @@ var EventsBase = (function () {
 exports['default'] = EventsBase;
 module.exports = exports['default'];
 
-},{}],51:[function(_dereq_,module,exports){
+},{}],54:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -15523,37 +15850,39 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingConstantsConstants = _dereq_(97);
+var _streamingConstantsConstants = _dereq_(99);
 
 var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
 
-var _streamingVoRepresentationInfo = _dereq_(171);
+var _streamingVoRepresentationInfo = _dereq_(174);
 
 var _streamingVoRepresentationInfo2 = _interopRequireDefault(_streamingVoRepresentationInfo);
 
-var _streamingVoMediaInfo = _dereq_(169);
+var _streamingVoMediaInfo = _dereq_(172);
 
 var _streamingVoMediaInfo2 = _interopRequireDefault(_streamingVoMediaInfo);
 
-var _streamingVoStreamInfo = _dereq_(172);
+var _streamingVoStreamInfo = _dereq_(175);
 
 var _streamingVoStreamInfo2 = _interopRequireDefault(_streamingVoStreamInfo);
 
-var _streamingVoManifestInfo = _dereq_(168);
+var _streamingVoManifestInfo = _dereq_(171);
 
 var _streamingVoManifestInfo2 = _interopRequireDefault(_streamingVoManifestInfo);
 
-var _voEvent = _dereq_(80);
+var _voEvent = _dereq_(82);
 
 var _voEvent2 = _interopRequireDefault(_voEvent);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
 var _externalsCea608Parser = _dereq_(2);
 
 var _externalsCea608Parser2 = _interopRequireDefault(_externalsCea608Parser);
+
+var _streamingUtilsSupervisorTools = _dereq_(158);
 
 function DashAdapter() {
     var instance = undefined,
@@ -15860,21 +16189,13 @@ function DashAdapter() {
         }
     }
 
-    function checkQuality(quality) {
-        var isInt = quality !== null && !isNaN(quality) && quality % 1 === 0;
-
-        if (!isInt) {
-            throw new Error('quality argument is not an integer');
-        }
-    }
-
     function getInitRequest(streamProcessor, quality) {
         var representationController = undefined,
             representation = undefined,
             indexHandler = undefined;
 
         checkStreamProcessor(streamProcessor);
-        checkQuality(quality);
+        (0, _streamingUtilsSupervisorTools.checkInteger)(quality);
 
         representationController = streamProcessor.getRepresentationController();
         indexHandler = streamProcessor.getIndexHandler();
@@ -15965,7 +16286,7 @@ function DashAdapter() {
         var voRepresentation = undefined;
 
         if (quality !== undefined) {
-            checkQuality(quality);
+            (0, _streamingUtilsSupervisorTools.checkInteger)(quality);
             voRepresentation = representationController.getRepresentationForQuality(quality);
         } else {
             voRepresentation = representationController.getCurrentRepresentation();
@@ -16055,7 +16376,7 @@ DashAdapter.__dashjs_factory_name = 'DashAdapter';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(DashAdapter);
 module.exports = exports['default'];
 
-},{"168":168,"169":169,"171":171,"172":172,"2":2,"44":44,"80":80,"97":97}],52:[function(_dereq_,module,exports){
+},{"158":158,"171":171,"172":172,"174":174,"175":175,"2":2,"47":47,"82":82,"99":99}],55:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -16094,63 +16415,63 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingConstantsConstants = _dereq_(97);
+var _streamingConstantsConstants = _dereq_(99);
 
 var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
-var _streamingVoFragmentRequest = _dereq_(164);
+var _streamingVoFragmentRequest = _dereq_(167);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _streamingVoMetricsHTTPRequest = _dereq_(182);
+var _streamingVoMetricsHTTPRequest = _dereq_(185);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _streamingUtilsURLUtils = _dereq_(157);
+var _streamingUtilsURLUtils = _dereq_(160);
 
 var _streamingUtilsURLUtils2 = _interopRequireDefault(_streamingUtilsURLUtils);
 
-var _voRepresentation = _dereq_(84);
+var _voRepresentation = _dereq_(86);
 
 var _voRepresentation2 = _interopRequireDefault(_voRepresentation);
 
-var _utilsSegmentsUtils = _dereq_(74);
+var _utilsSegmentsUtils = _dereq_(76);
 
-var _utilsSegmentsGetter = _dereq_(73);
+var _utilsSegmentsGetter = _dereq_(75);
 
 var _utilsSegmentsGetter2 = _interopRequireDefault(_utilsSegmentsGetter);
 
-var _SegmentBaseLoader = _dereq_(54);
+var _SegmentBaseLoader = _dereq_(57);
 
 var _SegmentBaseLoader2 = _interopRequireDefault(_SegmentBaseLoader);
 
-var _WebmSegmentBaseLoader = _dereq_(55);
+var _WebmSegmentBaseLoader = _dereq_(58);
 
 var _WebmSegmentBaseLoader2 = _interopRequireDefault(_WebmSegmentBaseLoader);
 
@@ -16625,7 +16946,7 @@ DashHandler.__dashjs_factory_name = 'DashHandler';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(DashHandler);
 module.exports = exports['default'];
 
-},{"157":157,"162":162,"164":164,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"54":54,"55":55,"56":56,"73":73,"74":74,"84":84,"97":97}],53:[function(_dereq_,module,exports){
+},{"160":160,"165":165,"167":167,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"57":57,"58":58,"59":59,"75":75,"76":76,"86":86,"99":99}],56:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -16664,17 +16985,17 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingVoMetricsHTTPRequest = _dereq_(182);
+var _streamingVoMetricsHTTPRequest = _dereq_(185);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _streamingConstantsMetricsConstants = _dereq_(98);
+var _streamingConstantsMetricsConstants = _dereq_(100);
 
 var _streamingConstantsMetricsConstants2 = _interopRequireDefault(_streamingConstantsMetricsConstants);
 
-var _utilsRound10 = _dereq_(72);
+var _utilsRound10 = _dereq_(74);
 
 var _utilsRound102 = _interopRequireDefault(_utilsRound10);
 
@@ -17050,7 +17371,7 @@ DashMetrics.__dashjs_factory_name = 'DashMetrics';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(DashMetrics);
 module.exports = exports['default'];
 
-},{"182":182,"44":44,"72":72,"98":98}],54:[function(_dereq_,module,exports){
+},{"100":100,"185":185,"47":47,"74":74}],57:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -17089,49 +17410,49 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingUtilsRequestModifier = _dereq_(155);
+var _streamingUtilsRequestModifier = _dereq_(157);
 
 var _streamingUtilsRequestModifier2 = _interopRequireDefault(_streamingUtilsRequestModifier);
 
-var _voSegment = _dereq_(85);
+var _voSegment = _dereq_(87);
 
 var _voSegment2 = _interopRequireDefault(_voSegment);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _streamingUtilsBoxParser = _dereq_(145);
+var _streamingUtilsBoxParser = _dereq_(147);
 
 var _streamingUtilsBoxParser2 = _interopRequireDefault(_streamingUtilsBoxParser);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _streamingVoMetricsHTTPRequest = _dereq_(182);
+var _streamingVoMetricsHTTPRequest = _dereq_(185);
 
-var _streamingVoFragmentRequest = _dereq_(164);
+var _streamingVoFragmentRequest = _dereq_(167);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
-var _streamingNetHTTPLoader = _dereq_(120);
+var _streamingNetHTTPLoader = _dereq_(122);
 
 var _streamingNetHTTPLoader2 = _interopRequireDefault(_streamingNetHTTPLoader);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -17192,7 +17513,6 @@ function SegmentBaseLoader() {
     function loadInitialization(representation, loadingInfo) {
         checkSetConfigCall();
         var initRange = null;
-        var isoFile = null;
         var baseUrl = baseURLController.resolve(representation.path);
         var info = loadingInfo || {
             init: true,
@@ -17212,8 +17532,7 @@ function SegmentBaseLoader() {
 
         var onload = function onload(response) {
             info.bytesLoaded = info.range.end;
-            isoFile = boxParser.parse(response);
-            initRange = findInitRange(isoFile);
+            initRange = boxParser.findInitRange(response);
 
             if (initRange) {
                 representation.range = initRange;
@@ -17384,27 +17703,6 @@ function SegmentBaseLoader() {
         return segments;
     }
 
-    function findInitRange(isoFile) {
-        var ftyp = isoFile.getBox('ftyp');
-        var moov = isoFile.getBox('moov');
-
-        var initRange = null;
-        var start = undefined,
-            end = undefined;
-
-        logger.debug('Searching for initialization.');
-
-        if (moov && moov.isComplete) {
-            start = ftyp ? ftyp.offset : moov.offset;
-            end = moov.offset + moov.size - 1;
-            initRange = start + '-' + end;
-
-            logger.debug('Found the initialization.  Range: ' + initRange);
-        }
-
-        return initRange;
-    }
-
     function getFragmentRequest(info) {
         if (!info.url) {
             return;
@@ -17443,7 +17741,7 @@ SegmentBaseLoader.__dashjs_factory_name = 'SegmentBaseLoader';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(SegmentBaseLoader);
 module.exports = exports['default'];
 
-},{"120":120,"145":145,"155":155,"162":162,"164":164,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"85":85}],55:[function(_dereq_,module,exports){
+},{"122":122,"147":147,"157":157,"165":165,"167":167,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"87":87}],58:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -17452,49 +17750,53 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _streamingUtilsEBMLParser = _dereq_(149);
+var _streamingUtilsEBMLParser = _dereq_(151);
 
 var _streamingUtilsEBMLParser2 = _interopRequireDefault(_streamingUtilsEBMLParser);
 
-var _coreFactoryMaker = _dereq_(44);
+var _streamingConstantsConstants = _dereq_(99);
+
+var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
+
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _streamingUtilsRequestModifier = _dereq_(155);
+var _streamingUtilsRequestModifier = _dereq_(157);
 
 var _streamingUtilsRequestModifier2 = _interopRequireDefault(_streamingUtilsRequestModifier);
 
-var _voSegment = _dereq_(85);
+var _voSegment = _dereq_(87);
 
 var _voSegment2 = _interopRequireDefault(_voSegment);
 
-var _streamingVoMetricsHTTPRequest = _dereq_(182);
+var _streamingVoMetricsHTTPRequest = _dereq_(185);
 
-var _streamingVoFragmentRequest = _dereq_(164);
+var _streamingVoFragmentRequest = _dereq_(167);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
-var _streamingNetHTTPLoader = _dereq_(120);
+var _streamingNetHTTPLoader = _dereq_(122);
 
 var _streamingNetHTTPLoader2 = _interopRequireDefault(_streamingNetHTTPLoader);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -17592,7 +17894,7 @@ function WebmSegmentBaseLoader() {
 
     function setConfig(config) {
         if (!config.baseURLController || !config.metricsModel || !config.mediaPlayerModel || !config.errHandler) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_streamingConstantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
         baseURLController = config.baseURLController;
         metricsModel = config.metricsModel;
@@ -17911,7 +18213,7 @@ WebmSegmentBaseLoader.__dashjs_factory_name = 'WebmSegmentBaseLoader';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(WebmSegmentBaseLoader);
 module.exports = exports['default'];
 
-},{"120":120,"149":149,"155":155,"162":162,"164":164,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"85":85}],56:[function(_dereq_,module,exports){
+},{"122":122,"151":151,"157":157,"165":165,"167":167,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"87":87,"99":99}],59:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -18066,7 +18368,7 @@ var constants = new DashConstants();
 exports['default'] = constants;
 module.exports = exports['default'];
 
-},{}],57:[function(_dereq_,module,exports){
+},{}],60:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -18105,35 +18407,35 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingConstantsConstants = _dereq_(97);
+var _streamingConstantsConstants = _dereq_(99);
 
 var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voRepresentation = _dereq_(84);
+var _voRepresentation = _dereq_(86);
 
 var _voRepresentation2 = _interopRequireDefault(_voRepresentation);
 
@@ -18489,7 +18791,7 @@ RepresentationController.__dashjs_factory_name = 'RepresentationController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(RepresentationController);
 module.exports = exports['default'];
 
-},{"162":162,"43":43,"44":44,"46":46,"49":49,"56":56,"84":84,"97":97}],58:[function(_dereq_,module,exports){
+},{"165":165,"46":46,"47":47,"49":49,"52":52,"59":59,"86":86,"99":99}],61:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -18528,67 +18830,67 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _streamingConstantsConstants = _dereq_(97);
+var _streamingConstantsConstants = _dereq_(99);
 
 var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
-var _voRepresentation = _dereq_(84);
+var _voRepresentation = _dereq_(86);
 
 var _voRepresentation2 = _interopRequireDefault(_voRepresentation);
 
-var _voAdaptationSet = _dereq_(78);
+var _voAdaptationSet = _dereq_(80);
 
 var _voAdaptationSet2 = _interopRequireDefault(_voAdaptationSet);
 
-var _voPeriod = _dereq_(83);
+var _voPeriod = _dereq_(85);
 
 var _voPeriod2 = _interopRequireDefault(_voPeriod);
 
-var _voMpd = _dereq_(82);
+var _voMpd = _dereq_(84);
 
 var _voMpd2 = _interopRequireDefault(_voMpd);
 
-var _voUTCTiming = _dereq_(86);
+var _voUTCTiming = _dereq_(88);
 
 var _voUTCTiming2 = _interopRequireDefault(_voUTCTiming);
 
-var _voEvent = _dereq_(80);
+var _voEvent = _dereq_(82);
 
 var _voEvent2 = _interopRequireDefault(_voEvent);
 
-var _voBaseURL = _dereq_(79);
+var _voBaseURL = _dereq_(81);
 
 var _voBaseURL2 = _interopRequireDefault(_voBaseURL);
 
-var _voEventStream = _dereq_(81);
+var _voEventStream = _dereq_(83);
 
 var _voEventStream2 = _interopRequireDefault(_voEventStream);
 
-var _streamingUtilsObjectUtils = _dereq_(154);
+var _streamingUtilsObjectUtils = _dereq_(156);
 
 var _streamingUtilsObjectUtils2 = _interopRequireDefault(_streamingUtilsObjectUtils);
 
-var _streamingUtilsURLUtils = _dereq_(157);
+var _streamingUtilsURLUtils = _dereq_(160);
 
 var _streamingUtilsURLUtils2 = _interopRequireDefault(_streamingUtilsURLUtils);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -19612,7 +19914,7 @@ DashManifestModel.__dashjs_factory_name = 'DashManifestModel';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(DashManifestModel);
 module.exports = exports['default'];
 
-},{"154":154,"157":157,"162":162,"42":42,"44":44,"46":46,"56":56,"78":78,"79":79,"80":80,"81":81,"82":82,"83":83,"84":84,"86":86,"97":97}],59:[function(_dereq_,module,exports){
+},{"156":156,"160":160,"165":165,"45":45,"47":47,"49":49,"59":59,"80":80,"81":81,"82":82,"83":83,"84":84,"85":85,"86":86,"88":88,"99":99}],62:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -19651,15 +19953,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _objectiron = _dereq_(69);
+var _objectiron = _dereq_(72);
 
 var _objectiron2 = _interopRequireDefault(_objectiron);
 
@@ -19667,27 +19969,27 @@ var _externalsXml2json = _dereq_(3);
 
 var _externalsXml2json2 = _interopRequireDefault(_externalsXml2json);
 
-var _matchersStringMatcher = _dereq_(68);
+var _matchersStringMatcher = _dereq_(71);
 
 var _matchersStringMatcher2 = _interopRequireDefault(_matchersStringMatcher);
 
-var _matchersDurationMatcher = _dereq_(66);
+var _matchersDurationMatcher = _dereq_(69);
 
 var _matchersDurationMatcher2 = _interopRequireDefault(_matchersDurationMatcher);
 
-var _matchersDateTimeMatcher = _dereq_(65);
+var _matchersDateTimeMatcher = _dereq_(68);
 
 var _matchersDateTimeMatcher2 = _interopRequireDefault(_matchersDateTimeMatcher);
 
-var _matchersNumericMatcher = _dereq_(67);
+var _matchersNumericMatcher = _dereq_(70);
 
 var _matchersNumericMatcher2 = _interopRequireDefault(_matchersNumericMatcher);
 
-var _mapsRepresentationBaseValuesMap = _dereq_(62);
+var _mapsRepresentationBaseValuesMap = _dereq_(65);
 
 var _mapsRepresentationBaseValuesMap2 = _interopRequireDefault(_mapsRepresentationBaseValuesMap);
 
-var _mapsSegmentValuesMap = _dereq_(63);
+var _mapsSegmentValuesMap = _dereq_(66);
 
 var _mapsSegmentValuesMap2 = _interopRequireDefault(_mapsSegmentValuesMap);
 
@@ -19765,7 +20067,7 @@ DashParser.__dashjs_factory_name = 'DashParser';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(DashParser);
 module.exports = exports['default'];
 
-},{"3":3,"42":42,"44":44,"62":62,"63":63,"65":65,"66":66,"67":67,"68":68,"69":69}],60:[function(_dereq_,module,exports){
+},{"3":3,"45":45,"47":47,"65":65,"66":66,"68":68,"69":69,"70":70,"71":71,"72":72}],63:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -19840,7 +20142,7 @@ var CommonProperty = (function () {
 exports["default"] = CommonProperty;
 module.exports = exports["default"];
 
-},{}],61:[function(_dereq_,module,exports){
+},{}],64:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -19886,7 +20188,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
 
-var _CommonProperty = _dereq_(60);
+var _CommonProperty = _dereq_(63);
 
 var _CommonProperty2 = _interopRequireDefault(_CommonProperty);
 
@@ -19930,7 +20232,7 @@ var MapNode = (function () {
 exports['default'] = MapNode;
 module.exports = exports['default'];
 
-},{"60":60}],62:[function(_dereq_,module,exports){
+},{"63":63}],65:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -19978,11 +20280,11 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _MapNode2 = _dereq_(61);
+var _MapNode2 = _dereq_(64);
 
 var _MapNode3 = _interopRequireDefault(_MapNode2);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
@@ -20003,7 +20305,7 @@ var RepresentationBaseValuesMap = (function (_MapNode) {
 exports['default'] = RepresentationBaseValuesMap;
 module.exports = exports['default'];
 
-},{"56":56,"61":61}],63:[function(_dereq_,module,exports){
+},{"59":59,"64":64}],66:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20051,11 +20353,11 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _MapNode2 = _dereq_(61);
+var _MapNode2 = _dereq_(64);
 
 var _MapNode3 = _interopRequireDefault(_MapNode2);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
@@ -20076,7 +20378,7 @@ var SegmentValuesMap = (function (_MapNode) {
 exports['default'] = SegmentValuesMap;
 module.exports = exports['default'];
 
-},{"56":56,"61":61}],64:[function(_dereq_,module,exports){
+},{"59":59,"64":64}],67:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20148,7 +20450,7 @@ var BaseMatcher = (function () {
 exports["default"] = BaseMatcher;
 module.exports = exports["default"];
 
-},{}],65:[function(_dereq_,module,exports){
+},{}],68:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20196,7 +20498,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _BaseMatcher2 = _dereq_(64);
+var _BaseMatcher2 = _dereq_(67);
 
 var _BaseMatcher3 = _interopRequireDefault(_BaseMatcher2);
 
@@ -20240,7 +20542,7 @@ var DateTimeMatcher = (function (_BaseMatcher) {
 exports['default'] = DateTimeMatcher;
 module.exports = exports['default'];
 
-},{"64":64}],66:[function(_dereq_,module,exports){
+},{"67":67}],69:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20288,15 +20590,15 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _BaseMatcher2 = _dereq_(64);
+var _BaseMatcher2 = _dereq_(67);
 
 var _BaseMatcher3 = _interopRequireDefault(_BaseMatcher2);
 
-var _streamingConstantsConstants = _dereq_(97);
+var _streamingConstantsConstants = _dereq_(99);
 
 var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
@@ -20344,7 +20646,7 @@ var DurationMatcher = (function (_BaseMatcher) {
 exports['default'] = DurationMatcher;
 module.exports = exports['default'];
 
-},{"56":56,"64":64,"97":97}],67:[function(_dereq_,module,exports){
+},{"59":59,"67":67,"99":99}],70:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20392,7 +20694,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _BaseMatcher2 = _dereq_(64);
+var _BaseMatcher2 = _dereq_(67);
 
 var _BaseMatcher3 = _interopRequireDefault(_BaseMatcher2);
 
@@ -20417,7 +20719,7 @@ var NumericMatcher = (function (_BaseMatcher) {
 exports['default'] = NumericMatcher;
 module.exports = exports['default'];
 
-},{"64":64}],68:[function(_dereq_,module,exports){
+},{"67":67}],71:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20467,11 +20769,11 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _BaseMatcher2 = _dereq_(64);
+var _BaseMatcher2 = _dereq_(67);
 
 var _BaseMatcher3 = _interopRequireDefault(_BaseMatcher2);
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
@@ -20505,7 +20807,7 @@ var StringMatcher = (function (_BaseMatcher) {
 exports['default'] = StringMatcher;
 module.exports = exports['default'];
 
-},{"56":56,"64":64}],69:[function(_dereq_,module,exports){
+},{"59":59,"67":67}],72:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20544,7 +20846,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -20639,7 +20941,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(ObjectIron);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44}],70:[function(_dereq_,module,exports){
+},{"47":47}],73:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -20679,191 +20981,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-function FragmentedTextBoxParser() {
-
-    var instance = undefined,
-        boxParser = undefined;
-
-    function setConfig(config) {
-        if (!config) return;
-
-        if (config.boxParser) {
-            boxParser = config.boxParser;
-        }
-    }
-
-    function getSamplesInfo(ab) {
-        if (!boxParser) {
-            throw new Error('boxParser is undefined');
-        }
-
-        if (!ab || ab.byteLength === 0) {
-            return { sampleList: [], lastSequenceNumber: NaN, totalDuration: NaN, numSequences: NaN };
-        }
-        var isoFile = boxParser.parse(ab);
-        // zero or more moofs
-        var moofBoxes = isoFile.getBoxes('moof');
-        // exactly one mfhd per moof
-        var mfhdBoxes = isoFile.getBoxes('mfhd');
-
-        var sampleDuration = undefined,
-            sampleCompositionTimeOffset = undefined,
-            sampleCount = undefined,
-            sampleSize = undefined,
-            sampleDts = undefined,
-            sampleList = undefined,
-            sample = undefined,
-            i = undefined,
-            j = undefined,
-            k = undefined,
-            l = undefined,
-            m = undefined,
-            n = undefined,
-            dataOffset = undefined,
-            lastSequenceNumber = undefined,
-            numSequences = undefined,
-            totalDuration = undefined;
-
-        numSequences = isoFile.getBoxes('moof').length;
-        lastSequenceNumber = mfhdBoxes[mfhdBoxes.length - 1].sequence_number;
-        sampleCount = 0;
-
-        sampleList = [];
-        var subsIndex = -1;
-        var nextSubsSample = -1;
-        for (l = 0; l < moofBoxes.length; l++) {
-            var moofBox = moofBoxes[l];
-            // zero or more trafs per moof
-            var trafBoxes = moofBox.getChildBoxes('traf');
-            for (j = 0; j < trafBoxes.length; j++) {
-                var trafBox = trafBoxes[j];
-                // exactly one tfhd per traf
-                var tfhdBox = trafBox.getChildBox('tfhd');
-                // zero or one tfdt per traf
-                var tfdtBox = trafBox.getChildBox('tfdt');
-                sampleDts = tfdtBox.baseMediaDecodeTime;
-                // zero or more truns per traf
-                var trunBoxes = trafBox.getChildBoxes('trun');
-                // zero or more subs per traf
-                var subsBoxes = trafBox.getChildBoxes('subs');
-                for (k = 0; k < trunBoxes.length; k++) {
-                    var trunBox = trunBoxes[k];
-                    sampleCount = trunBox.sample_count;
-                    dataOffset = (tfhdBox.base_data_offset || 0) + (trunBox.data_offset || 0);
-
-                    for (i = 0; i < sampleCount; i++) {
-                        sample = trunBox.samples[i];
-                        sampleDuration = sample.sample_duration !== undefined ? sample.sample_duration : tfhdBox.default_sample_duration;
-                        sampleSize = sample.sample_size !== undefined ? sample.sample_size : tfhdBox.default_sample_size;
-                        sampleCompositionTimeOffset = sample.sample_composition_time_offset !== undefined ? sample.sample_composition_time_offset : 0;
-                        var sampleData = {
-                            'dts': sampleDts,
-                            'cts': sampleDts + sampleCompositionTimeOffset,
-                            'duration': sampleDuration,
-                            'offset': moofBox.offset + dataOffset,
-                            'size': sampleSize,
-                            'subSizes': [sampleSize]
-                        };
-                        if (subsBoxes) {
-                            for (m = 0; m < subsBoxes.length; m++) {
-                                var subsBox = subsBoxes[m];
-                                if (subsIndex < subsBox.entry_count - 1 && i > nextSubsSample) {
-                                    subsIndex++;
-                                    nextSubsSample += subsBox.entries[subsIndex].sample_delta;
-                                }
-                                if (i == nextSubsSample) {
-                                    sampleData.subSizes = [];
-                                    var entry = subsBox.entries[subsIndex];
-                                    for (n = 0; n < entry.subsample_count; n++) {
-                                        sampleData.subSizes.push(entry.subsamples[n].subsample_size);
-                                    }
-                                }
-                            }
-                        }
-                        sampleList.push(sampleData);
-                        dataOffset += sampleSize;
-                        sampleDts += sampleDuration;
-                    }
-                }
-                totalDuration = sampleDts - tfdtBox.baseMediaDecodeTime;
-            }
-        }
-        return { sampleList: sampleList, lastSequenceNumber: lastSequenceNumber, totalDuration: totalDuration, numSequences: numSequences };
-    }
-
-    function getMediaTimescaleFromMoov(ab) {
-        if (!boxParser) {
-            throw new Error('boxParser is undefined');
-        }
-
-        var isoFile = boxParser.parse(ab);
-        var mdhdBox = isoFile ? isoFile.getBox('mdhd') : undefined;
-
-        return mdhdBox ? mdhdBox.timescale : NaN;
-    }
-
-    instance = {
-        getSamplesInfo: getSamplesInfo,
-        getMediaTimescaleFromMoov: getMediaTimescaleFromMoov,
-        setConfig: setConfig
-    };
-
-    return instance;
-}
-
-FragmentedTextBoxParser.__dashjs_factory_name = 'FragmentedTextBoxParser';
-exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(FragmentedTextBoxParser);
-module.exports = exports['default'];
-
-},{"44":44}],71:[function(_dereq_,module,exports){
-/**
- * The copyright in this software is being made available under the BSD License,
- * included below. This software may be subject to other third party and contributor
- * rights, including patent rights, and no such rights are granted under this license.
- *
- * Copyright (c) 2013, Dash Industry Forum.
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without modification,
- * are permitted provided that the following conditions are met:
- *  * Redistributions of source code must retain the above copyright notice, this
- *  list of conditions and the following disclaimer.
- *  * Redistributions in binary form must reproduce the above copyright notice,
- *  this list of conditions and the following disclaimer in the documentation and/or
- *  other materials provided with the distribution.
- *  * Neither the name of Dash Industry Forum nor the names of its
- *  contributors may be used to endorse or promote products derived from this software
- *  without specific prior written permission.
- *
- *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
- *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
- *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
- *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
- *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
- *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
- *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- *  POSSIBILITY OF SUCH DAMAGE.
- */
-
-'use strict';
-
-Object.defineProperty(exports, '__esModule', {
-    value: true
-});
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
-
-var _coreFactoryMaker = _dereq_(44);
-
-var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
-
-var _SegmentsUtils = _dereq_(74);
+var _SegmentsUtils = _dereq_(76);
 
 function ListSegmentsGetter(config, isDynamic) {
 
@@ -20923,7 +21045,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(ListSegmentsGetter);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44,"74":74}],72:[function(_dereq_,module,exports){
+},{"47":47,"76":76}],74:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21031,7 +21153,7 @@ function _decimalAdjust(type, value, exp) {
 }
 module.exports = exports['default'];
 
-},{}],73:[function(_dereq_,module,exports){
+},{}],75:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21070,23 +21192,23 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _TimelineSegmentsGetter = _dereq_(77);
+var _TimelineSegmentsGetter = _dereq_(79);
 
 var _TimelineSegmentsGetter2 = _interopRequireDefault(_TimelineSegmentsGetter);
 
-var _TemplateSegmentsGetter = _dereq_(75);
+var _TemplateSegmentsGetter = _dereq_(77);
 
 var _TemplateSegmentsGetter2 = _interopRequireDefault(_TemplateSegmentsGetter);
 
-var _ListSegmentsGetter = _dereq_(71);
+var _ListSegmentsGetter = _dereq_(73);
 
 var _ListSegmentsGetter2 = _interopRequireDefault(_ListSegmentsGetter);
 
@@ -21161,7 +21283,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(SegmentsGetter);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44,"56":56,"71":71,"75":75,"77":77}],74:[function(_dereq_,module,exports){
+},{"47":47,"59":59,"73":73,"77":77,"79":79}],76:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21208,7 +21330,7 @@ exports.decideSegmentListRangeForTemplate = decideSegmentListRangeForTemplate;
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voSegment = _dereq_(85);
+var _voSegment = _dereq_(87);
 
 var _voSegment2 = _interopRequireDefault(_voSegment);
 
@@ -21465,7 +21587,7 @@ function decideSegmentListRangeForTemplate(timelineConverter, isDynamic, represe
     return range;
 }
 
-},{"85":85}],75:[function(_dereq_,module,exports){
+},{"87":87}],77:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21505,11 +21627,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _SegmentsUtils = _dereq_(74);
+var _SegmentsUtils = _dereq_(76);
 
 function TemplateSegmentsGetter(config, isDynamic) {
 
@@ -21544,7 +21666,6 @@ function TemplateSegmentsGetter(config, isDynamic) {
         endIdx = segmentRange.end;
 
         for (periodSegIdx = startIdx; periodSegIdx <= endIdx; periodSegIdx++) {
-
             seg = (0, _SegmentsUtils.getIndexBasedSegment)(timelineConverter, isDynamic, representation, periodSegIdx);
             seg.replacementTime = (start + periodSegIdx - 1) * representation.segmentDuration;
             url = template.media;
@@ -21577,7 +21698,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(TemplateSegmentsGett
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44,"74":74}],76:[function(_dereq_,module,exports){
+},{"47":47,"76":76}],78:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21616,15 +21737,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -21768,7 +21889,6 @@ function TimelineConverter() {
         if (isClientServerTimeSyncCompleted) return;
 
         if (e.offset !== undefined) {
-
             setClientTimeOffset(e.offset / 1000);
             isClientServerTimeSyncCompleted = true;
         }
@@ -21819,7 +21939,7 @@ TimelineConverter.__dashjs_factory_name = 'TimelineConverter';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(TimelineConverter);
 module.exports = exports['default'];
 
-},{"43":43,"44":44,"49":49}],77:[function(_dereq_,module,exports){
+},{"46":46,"47":47,"52":52}],79:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -21859,11 +21979,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _SegmentsUtils = _dereq_(74);
+var _streamingConstantsConstants = _dereq_(99);
+
+var _streamingConstantsConstants2 = _interopRequireDefault(_streamingConstantsConstants);
+
+var _SegmentsUtils = _dereq_(76);
 
 function TimelineSegmentsGetter(config, isDynamic) {
 
@@ -21874,7 +21998,7 @@ function TimelineSegmentsGetter(config, isDynamic) {
 
     function checkConfig() {
         if (!timelineConverter || !timelineConverter.hasOwnProperty('calcMediaTimeFromPresentationTime') || !timelineConverter.hasOwnProperty('calcSegmentAvailabilityRange')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_streamingConstantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -22025,7 +22149,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(TimelineSegmentsGett
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44,"74":74}],78:[function(_dereq_,module,exports){
+},{"47":47,"76":76,"99":99}],80:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22079,7 +22203,7 @@ var AdaptationSet = function AdaptationSet() {
 exports["default"] = AdaptationSet;
 module.exports = exports["default"];
 
-},{}],79:[function(_dereq_,module,exports){
+},{}],81:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22150,7 +22274,7 @@ BaseURL.DEFAULT_DVB_WEIGHT = DEFAULT_DVB_WEIGHT;
 exports['default'] = BaseURL;
 module.exports = exports['default'];
 
-},{}],80:[function(_dereq_,module,exports){
+},{}],82:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22207,7 +22331,7 @@ var Event = function Event() {
 exports['default'] = Event;
 module.exports = exports['default'];
 
-},{}],81:[function(_dereq_,module,exports){
+},{}],83:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22264,7 +22388,7 @@ var EventStream = function EventStream() {
 exports['default'] = EventStream;
 module.exports = exports['default'];
 
-},{}],82:[function(_dereq_,module,exports){
+},{}],84:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22323,7 +22447,7 @@ var Mpd = function Mpd() {
 exports["default"] = Mpd;
 module.exports = exports["default"];
 
-},{}],83:[function(_dereq_,module,exports){
+},{}],85:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22381,7 +22505,7 @@ Period.DEFAULT_ID = 'defaultId';
 exports['default'] = Period;
 module.exports = exports['default'];
 
-},{}],84:[function(_dereq_,module,exports){
+},{}],86:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22429,7 +22553,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
 
-var _constantsDashConstants = _dereq_(56);
+var _constantsDashConstants = _dereq_(59);
 
 var _constantsDashConstants2 = _interopRequireDefault(_constantsDashConstants);
 
@@ -22481,7 +22605,7 @@ var Representation = (function () {
 exports['default'] = Representation;
 module.exports = exports['default'];
 
-},{"56":56}],85:[function(_dereq_,module,exports){
+},{"59":59}],87:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22556,7 +22680,7 @@ var Segment = function Segment() {
 exports["default"] = Segment;
 module.exports = exports["default"];
 
-},{}],86:[function(_dereq_,module,exports){
+},{}],88:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22610,7 +22734,7 @@ var UTCTiming = function UTCTiming() {
 exports['default'] = UTCTiming;
 module.exports = exports['default'];
 
-},{}],87:[function(_dereq_,module,exports){
+},{}],89:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22649,31 +22773,35 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _netHTTPLoader = _dereq_(120);
+var _netHTTPLoader = _dereq_(122);
 
 var _netHTTPLoader2 = _interopRequireDefault(_netHTTPLoader);
 
-var _voHeadRequest = _dereq_(165);
+var _voHeadRequest = _dereq_(168);
 
 var _voHeadRequest2 = _interopRequireDefault(_voHeadRequest);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _streamingUtilsBoxParser = _dereq_(147);
+
+var _streamingUtilsBoxParser2 = _interopRequireDefault(_streamingUtilsBoxParser);
+
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -22687,11 +22815,13 @@ function FragmentLoader(config) {
         httpLoader = undefined;
 
     function setup() {
+        var boxParser = (0, _streamingUtilsBoxParser2['default'])(context).getInstance();
         httpLoader = (0, _netHTTPLoader2['default'])(context).create({
             errHandler: config.errHandler,
             metricsModel: config.metricsModel,
             mediaPlayerModel: config.mediaPlayerModel,
             requestModifier: config.requestModifier,
+            boxParser: boxParser,
             useFetch: config.mediaPlayerModel.getLowLatencyEnabled()
         });
     }
@@ -22736,7 +22866,8 @@ function FragmentLoader(config) {
                 request: request,
                 progress: function progress(event) {
                     eventBus.trigger(_coreEventsEvents2['default'].LOADING_PROGRESS, {
-                        request: request
+                        request: request,
+                        stream: event.stream
                     });
                     if (event.data) {
                         eventBus.trigger(_coreEventsEvents2['default'].LOADING_DATA_PROGRESS, {
@@ -22793,7 +22924,7 @@ FragmentLoader.__dashjs_factory_name = 'FragmentLoader';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(FragmentLoader);
 module.exports = exports['default'];
 
-},{"120":120,"162":162,"165":165,"43":43,"44":44,"46":46,"49":49}],88:[function(_dereq_,module,exports){
+},{"122":122,"147":147,"165":165,"168":168,"46":46,"47":47,"49":49,"52":52}],90:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -22832,53 +22963,53 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _controllersXlinkController = _dereq_(111);
+var _controllersXlinkController = _dereq_(113);
 
 var _controllersXlinkController2 = _interopRequireDefault(_controllersXlinkController);
 
-var _netHTTPLoader = _dereq_(120);
+var _netHTTPLoader = _dereq_(122);
 
 var _netHTTPLoader2 = _interopRequireDefault(_netHTTPLoader);
 
-var _utilsURLUtils = _dereq_(157);
+var _utilsURLUtils = _dereq_(160);
 
 var _utilsURLUtils2 = _interopRequireDefault(_utilsURLUtils);
 
-var _voTextRequest = _dereq_(173);
+var _voTextRequest = _dereq_(176);
 
 var _voTextRequest2 = _interopRequireDefault(_voTextRequest);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _dashParserDashParser = _dereq_(59);
+var _dashParserDashParser = _dereq_(62);
 
 var _dashParserDashParser2 = _interopRequireDefault(_dashParserDashParser);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -23066,7 +23197,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(ManifestLoader);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"111":111,"120":120,"157":157,"162":162,"173":173,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"59":59,"97":97}],89:[function(_dereq_,module,exports){
+},{"113":113,"122":122,"160":160,"165":165,"176":176,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"62":62,"99":99}],91:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -23105,23 +23236,23 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -23296,7 +23427,7 @@ ManifestUpdater.__dashjs_factory_name = 'ManifestUpdater';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ManifestUpdater);
 module.exports = exports['default'];
 
-},{"42":42,"43":43,"44":44,"46":46,"49":49}],90:[function(_dereq_,module,exports){
+},{"45":45,"46":46,"47":47,"49":49,"52":52}],92:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -23335,131 +23466,127 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _constantsMetricsConstants = _dereq_(98);
+var _constantsMetricsConstants = _dereq_(100);
 
 var _constantsMetricsConstants2 = _interopRequireDefault(_constantsMetricsConstants);
 
-var _dashVoUTCTiming = _dereq_(86);
-
-var _dashVoUTCTiming2 = _interopRequireDefault(_dashVoUTCTiming);
-
-var _controllersPlaybackController = _dereq_(107);
+var _controllersPlaybackController = _dereq_(109);
 
 var _controllersPlaybackController2 = _interopRequireDefault(_controllersPlaybackController);
 
-var _controllersStreamController = _dereq_(109);
+var _controllersStreamController = _dereq_(111);
 
 var _controllersStreamController2 = _interopRequireDefault(_controllersStreamController);
 
-var _controllersMediaController = _dereq_(105);
+var _controllersMediaController = _dereq_(107);
 
 var _controllersMediaController2 = _interopRequireDefault(_controllersMediaController);
 
-var _controllersBaseURLController = _dereq_(100);
+var _controllersBaseURLController = _dereq_(102);
 
 var _controllersBaseURLController2 = _interopRequireDefault(_controllersBaseURLController);
 
-var _ManifestLoader = _dereq_(88);
+var _ManifestLoader = _dereq_(90);
 
 var _ManifestLoader2 = _interopRequireDefault(_ManifestLoader);
 
-var _utilsErrorHandler = _dereq_(150);
+var _utilsErrorHandler = _dereq_(152);
 
 var _utilsErrorHandler2 = _interopRequireDefault(_utilsErrorHandler);
 
-var _utilsCapabilities = _dereq_(146);
+var _utilsCapabilities = _dereq_(148);
 
 var _utilsCapabilities2 = _interopRequireDefault(_utilsCapabilities);
 
-var _textTextTracks = _dereq_(141);
+var _textTextTracks = _dereq_(143);
 
 var _textTextTracks2 = _interopRequireDefault(_textTextTracks);
 
-var _utilsRequestModifier = _dereq_(155);
+var _utilsRequestModifier = _dereq_(157);
 
 var _utilsRequestModifier2 = _interopRequireDefault(_utilsRequestModifier);
 
-var _textTextController = _dereq_(139);
+var _textTextController = _dereq_(141);
 
 var _textTextController2 = _interopRequireDefault(_textTextController);
 
-var _modelsURIFragmentModel = _dereq_(117);
+var _modelsURIFragmentModel = _dereq_(119);
 
 var _modelsURIFragmentModel2 = _interopRequireDefault(_modelsURIFragmentModel);
 
-var _modelsManifestModel = _dereq_(114);
+var _modelsManifestModel = _dereq_(116);
 
 var _modelsManifestModel2 = _interopRequireDefault(_modelsManifestModel);
 
-var _modelsMediaPlayerModel = _dereq_(115);
+var _modelsMediaPlayerModel = _dereq_(117);
 
 var _modelsMediaPlayerModel2 = _interopRequireDefault(_modelsMediaPlayerModel);
 
-var _modelsMetricsModel = _dereq_(116);
+var _modelsMetricsModel = _dereq_(118);
 
 var _modelsMetricsModel2 = _interopRequireDefault(_modelsMetricsModel);
 
-var _controllersAbrController = _dereq_(99);
+var _controllersAbrController = _dereq_(101);
 
 var _controllersAbrController2 = _interopRequireDefault(_controllersAbrController);
 
-var _modelsVideoModel = _dereq_(118);
+var _modelsVideoModel = _dereq_(120);
 
 var _modelsVideoModel2 = _interopRequireDefault(_modelsVideoModel);
 
-var _utilsDOMStorage = _dereq_(148);
+var _utilsDOMStorage = _dereq_(150);
 
 var _utilsDOMStorage2 = _interopRequireDefault(_utilsDOMStorage);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _MediaPlayerEvents = _dereq_(91);
+var _MediaPlayerEvents = _dereq_(93);
 
 var _MediaPlayerEvents2 = _interopRequireDefault(_MediaPlayerEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreVersion = _dereq_(45);
+var _coreVersion = _dereq_(48);
 
 //Dash
 
-var _dashDashAdapter = _dereq_(51);
+var _dashDashAdapter = _dereq_(54);
 
 var _dashDashAdapter2 = _interopRequireDefault(_dashDashAdapter);
 
-var _dashModelsDashManifestModel = _dereq_(58);
+var _dashModelsDashManifestModel = _dereq_(61);
 
 var _dashModelsDashManifestModel2 = _interopRequireDefault(_dashModelsDashManifestModel);
 
-var _dashDashMetrics = _dereq_(53);
+var _dashDashMetrics = _dereq_(56);
 
 var _dashDashMetrics2 = _interopRequireDefault(_dashDashMetrics);
 
-var _dashUtilsTimelineConverter = _dereq_(76);
+var _dashUtilsTimelineConverter = _dereq_(78);
 
 var _dashUtilsTimelineConverter2 = _interopRequireDefault(_dashUtilsTimelineConverter);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
 var _externalsBase64 = _dereq_(1);
 
@@ -23469,9 +23596,11 @@ var _codemIsoboxer = _dereq_(5);
 
 var _codemIsoboxer2 = _interopRequireDefault(_codemIsoboxer);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
+
+var _utilsSupervisorTools = _dereq_(158);
 
 /**
  * @module MediaPlayer
@@ -23486,8 +23615,8 @@ function MediaPlayer() {
     var ELEMENT_NOT_ATTACHED_ERROR = 'You must first call attachView() to set the video element before calling this method';
     var SOURCE_NOT_ATTACHED_ERROR = 'You must first call attachSource() with a valid source before calling this method';
     var MEDIA_PLAYER_NOT_INITIALIZED_ERROR = 'MediaPlayer not initialized!';
-    var MEDIA_PLAYER_BAD_ARGUMENT_ERROR = 'MediaPlayer Invalid Arguments!';
-    var PLAYBACK_CATCHUP_RATE_BAD_ARGUMENT_ERROR = 'Playback catchup rate invalid argument! Use a number from 0 to 0.2';
+    var PLAYBACK_LOW_LATENCY_MIN_DRIFT_BAD_ARGUMENT_ERROR = 'Playback minimum drift has an invalid value! Use a number from 0 to 0.5';
+    var PLAYBACK_LOW_LATENCY_MAX_DRIFT_BAD_ARGUMENT_ERROR = 'Playback maximum drift has an invalid value! Use a number greater or equal to 0';
 
     var context = this.context;
     var eventBus = (0, _coreEventBus2['default'])(context).getInstance();
@@ -23519,6 +23648,7 @@ function MediaPlayer() {
         manifestModel = undefined,
         videoModel = undefined,
         textController = undefined,
+        uriFragmentModel = undefined,
         domStorage = undefined;
 
     /*
@@ -23538,6 +23668,7 @@ function MediaPlayer() {
         _coreEventsEvents2['default'].extend(_MediaPlayerEvents2['default']);
         mediaPlayerModel = (0, _modelsMediaPlayerModel2['default'])(context).getInstance();
         videoModel = (0, _modelsVideoModel2['default'])(context).getInstance();
+        uriFragmentModel = (0, _modelsURIFragmentModel2['default'])(context).getInstance();
     }
 
     /**
@@ -23824,8 +23955,10 @@ function MediaPlayer() {
             throw PLAYBACK_NOT_INITIALIZED_ERROR;
         }
 
-        if (typeof value !== 'number' || isNaN(value)) {
-            throw MEDIA_PLAYER_BAD_ARGUMENT_ERROR;
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+
+        if (isNaN(value)) {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
         }
 
         var s = playbackController.getIsDynamic() ? getDVRSeekOffset(value) : value;
@@ -23865,9 +23998,6 @@ function MediaPlayer() {
      * @instance
      */
     function setPlaybackRate(value) {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
-        }
         getVideoElement().playbackRate = value;
     }
 
@@ -23878,32 +24008,26 @@ function MediaPlayer() {
      * @instance
      */
     function getPlaybackRate() {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
-        }
         return getVideoElement().playbackRate;
     }
 
     /**
-     * Use this method to set the catch up rate, as a percentage, for low latency live streams. In low latency mode,
-     * when measured latency is higher than the target one ({@link module:MediaPlayer#setLiveDelay setLiveDelay()}),
-     * dash.js increases playback rate the percentage defined with this method until target is reached.
+     * Use this method to set the maximum catch up rate, as a percentage, for low latency live streams. In low latency mode,
+     * when measured latency is higher/lower than the target one ({@link module:MediaPlayer#setLiveDelay setLiveDelay()}),
+     * dash.js increases/decreases playback rate respectively up to (+/-) the percentage defined with this method until target is reached.
      *
-     * Valid values for catch up rate are in range 0-20%. Set it to 0% to turn off live catch up feature.
+     * Valid values for catch up rate are in range 0-0.5 (0-50%). Set it to 0 to turn off live catch up feature.
      *
      * Note: Catch-up mechanism is only applied when playing low latency live streams.
      *
-     * @param {number} value Percentage in which playback rate is increased when live catch up mechanism is activated.
+     * @param {number} value Percentage in which playback rate is increased/decreased when live catch up mechanism is activated.
      * @memberof module:MediaPlayer
      * @see {@link module:MediaPlayer#setLiveDelay setLiveDelay()}
-     * @default {number} 0.05
+     * @default {number} 0.5
      * @instance
      */
     function setCatchUpPlaybackRate(value) {
-        if (typeof value !== 'number' || isNaN(value) || value < 0.0 || value > 0.20) {
-            throw PLAYBACK_CATCHUP_RATE_BAD_ARGUMENT_ERROR;
-        }
-        playbackController.setCatchUpPlaybackRate(value);
+        mediaPlayerModel.setCatchUpPlaybackRate(value);
     }
 
     /**
@@ -23914,7 +24038,77 @@ function MediaPlayer() {
      * @instance
      */
     function getCatchUpPlaybackRate() {
-        return playbackController.getCatchUpPlaybackRate();
+        return mediaPlayerModel.getCatchUpPlaybackRate();
+    }
+
+    /**
+     * Use this method to set the minimum latency deviation allowed before activating catch-up mechanism. In low latency mode,
+     * when the difference between the measured latency and the target one ({@link module:MediaPlayer#setLiveDelay setLiveDelay()}),
+     * as an absolute number, is higher than the one sets with this method, then dash.js increases/decreases
+     * playback rate until target latency is reached.
+     *
+     * LowLatencyMinDrift should be provided in seconds, and it uses values between 0.0 and 0.5.
+     *
+     * Note: Catch-up mechanism is only applied when playing low latency live streams.
+     *
+     * @param {number} value Maximum difference between measured latency and the target one before applying playback rate modifications.
+     * @memberof module:MediaPlayer
+     * @see {@link module:MediaPlayer#setLiveDelay setLiveDelay()}
+     * @default {number} 0.05
+     * @instance
+     */
+    function setLowLatencyMinDrift(value) {
+        if (typeof value !== 'number' || isNaN(value) || value < 0.0 || value > 0.50) {
+            throw PLAYBACK_LOW_LATENCY_MIN_DRIFT_BAD_ARGUMENT_ERROR;
+        }
+        mediaPlayerModel.setLowLatencyMinDrift(value);
+    }
+
+    /**
+     * Returns the current latency minimum allowed drift.
+     * @returns {number}
+     * @see {@link module:MediaPlayer#setLowLatencyMinDrift setLowLatencyMinDrift()}
+     * @memberof module:MediaPlayer
+     * @instance
+     */
+    function getLowLatencyMinDrift() {
+        return mediaPlayerModel.getLowLatencyMinDrift();
+    }
+
+    /**
+     * Use this method to set the maximum latency deviation allowed before dash.js to do a seeking to live position. In low latency mode,
+     * when the difference between the measured latency and the target one ({@link module:MediaPlayer#setLiveDelay setLiveDelay()}),
+     * as an absolute number, is higher than the one sets with this method, then dash.js does a seek to live edge position minus
+     * the target live delay.
+     *
+     * LowLatencyMaxDriftBeforeSeeking should be provided in seconds. If 0, then seeking operations won't be used for
+     * fixing latency deviations.
+     *
+     * Note: Catch-up mechanism is only applied when playing low latency live streams.
+     *
+     * @param {number} value Maximum difference between measured latency and the target one before using seek to
+     * fix drastically live latency deviations.
+     * @memberof module:MediaPlayer
+     * @see {@link module:MediaPlayer#setLiveDelay setLiveDelay()}
+     * @default {number} 0
+     * @instance
+     */
+    function setLowLatencyMaxDriftBeforeSeeking(value) {
+        if (typeof value !== 'number' || isNaN(value) || value < 0) {
+            throw PLAYBACK_LOW_LATENCY_MAX_DRIFT_BAD_ARGUMENT_ERROR;
+        }
+        mediaPlayerModel.setLowLatencyMaxDriftBeforeSeeking(value);
+    }
+
+    /**
+     * Returns the maximum latency drift before applying a seek operation to reduce the latency.
+     * @returns {number}
+     * @see {@link module:MediaPlayer#setLowLatencyMaxDriftBeforeSeeking setLowLatencyMaxDriftBeforeSeeking()}
+     * @memberof module:MediaPlayer
+     * @instance
+     */
+    function getLowLatencyMaxDriftBeforeSeeking() {
+        return mediaPlayerModel.getLowLatencyMaxDriftBeforeSeeking();
     }
 
     /**
@@ -23924,9 +24118,7 @@ function MediaPlayer() {
      * @instance
      */
     function setMute(value) {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         getVideoElement().muted = value;
     }
 
@@ -23937,9 +24129,6 @@ function MediaPlayer() {
      * @instance
      */
     function isMuted() {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
-        }
         return getVideoElement().muted;
     }
 
@@ -23950,8 +24139,8 @@ function MediaPlayer() {
      * @instance
      */
     function setVolume(value) {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
+        if (typeof value !== 'number' || isNaN(value) || value < 0.0 || value > 1.0) {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
         }
         getVideoElement().volume = value;
     }
@@ -23963,9 +24152,6 @@ function MediaPlayer() {
      * @instance
      */
     function getVolume() {
-        if (!videoModel.getElement()) {
-            throw ELEMENT_NOT_ATTACHED_ERROR;
-        }
         return getVideoElement().volume;
     }
 
@@ -24453,9 +24639,6 @@ function MediaPlayer() {
      * @instance
      */
     function setUseDeadTimeLatencyForAbr(useDeadTimeLatency) {
-        if (typeof useDeadTimeLatency !== 'boolean') {
-            throw MEDIA_PLAYER_BAD_ARGUMENT_ERROR;
-        }
         abrController.setUseDeadTimeLatency(useDeadTimeLatency);
     }
 
@@ -24475,6 +24658,7 @@ function MediaPlayer() {
      *
      */
     function setAutoPlay(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         autoPlay = value;
     }
 
@@ -24671,11 +24855,7 @@ function MediaPlayer() {
      * @instance
      */
     function setABRStrategy(value) {
-        if (value === _constantsConstants2['default'].ABR_STRATEGY_DYNAMIC || value === _constantsConstants2['default'].ABR_STRATEGY_BOLA || value === _constantsConstants2['default'].ABR_STRATEGY_THROUGHPUT) {
-            mediaPlayerModel.setABRStrategy(value);
-        } else {
-            logger.warn('Ignoring setABRStrategy(' + value + ') - unknown value.');
-        }
+        mediaPlayerModel.setABRStrategy(value);
     }
 
     /**
@@ -24753,11 +24933,7 @@ function MediaPlayer() {
      * @instance
      */
     function setMovingAverageMethod(value) {
-        if (value === _constantsConstants2['default'].MOVING_AVERAGE_SLIDING_WINDOW || value === _constantsConstants2['default'].MOVING_AVERAGE_EWMA) {
-            mediaPlayerModel.setMovingAverageMethod(value);
-        } else {
-            logger.warn('Warning: Ignoring setMovingAverageMethod(' + value + ') - unknown value.');
-        }
+        mediaPlayerModel.setMovingAverageMethod(value);
     }
 
     /**
@@ -24823,11 +24999,7 @@ function MediaPlayer() {
      * @instance
      */
     function addUTCTimingSource(schemeIdUri, value) {
-        removeUTCTimingSource(schemeIdUri, value); //check if it already exists and remove if so.
-        var vo = new _dashVoUTCTiming2['default']();
-        vo.schemeIdUri = schemeIdUri;
-        vo.value = value;
-        mediaPlayerModel.getUTCTimingSources().push(vo);
+        mediaPlayerModel.addUTCTimingSource(schemeIdUri, value);
     }
 
     /**
@@ -24840,12 +25012,7 @@ function MediaPlayer() {
      * @instance
      */
     function removeUTCTimingSource(schemeIdUri, value) {
-        var UTCTimingSources = mediaPlayerModel.getUTCTimingSources();
-        UTCTimingSources.forEach(function (obj, idx) {
-            if (obj.schemeIdUri === schemeIdUri && obj.value === value) {
-                UTCTimingSources.splice(idx, 1);
-            }
-        });
+        mediaPlayerModel.removeUTCTimingSource(schemeIdUri, value);
     }
 
     /**
@@ -24860,7 +25027,7 @@ function MediaPlayer() {
      * @instance
      */
     function clearDefaultUTCTimingSources() {
-        mediaPlayerModel.setUTCTimingSources([]);
+        mediaPlayerModel.clearDefaultUTCTimingSources();
     }
 
     /**
@@ -24877,7 +25044,7 @@ function MediaPlayer() {
      * @instance
      */
     function restoreDefaultUTCTimingSources() {
-        addUTCTimingSource(_modelsMediaPlayerModel2['default'].DEFAULT_UTC_TIMING_SOURCE.scheme, _modelsMediaPlayerModel2['default'].DEFAULT_UTC_TIMING_SOURCE.value);
+        mediaPlayerModel.restoreDefaultUTCTimingSources();
     }
 
     /**
@@ -24971,14 +25138,6 @@ function MediaPlayer() {
         return mediaPlayerModel.getStableBufferTime();
     }
 
-    /**
-     * The time that the internal buffer target will be set to once playing the top quality.
-     * If there are multiple bitrates in your adaptation, and the media is playing at the highest
-     * bitrate, then we try to build a larger buffer at the top quality to increase stability
-     * and to maintain media quality.
-     *
-     * @default 30 seconds.
-     * @param {int} value
     /**
      * The time that the internal buffer target will be set to once playing the top quality.
      * If there are multiple bitrates in your adaptation, and the media is playing at the highest
@@ -25622,7 +25781,6 @@ function MediaPlayer() {
             throw STREAMING_NOT_INITIALIZED_ERROR;
         }
         var streamInfo = streamController.getActiveStreamInfo();
-        if (!streamInfo) return [];
         return mediaController.getTracksFor(type, streamInfo);
     }
 
@@ -25657,9 +25815,6 @@ function MediaPlayer() {
             throw STREAMING_NOT_INITIALIZED_ERROR;
         }
         var streamInfo = streamController.getActiveStreamInfo();
-
-        if (!streamInfo) return null;
-
         return mediaController.getCurrentTrackFor(type, streamInfo);
     }
 
@@ -25843,10 +25998,11 @@ function MediaPlayer() {
      * @returns {Thumbnail|null} - Thumbnail for the given time position. It returns null in case there are is not a thumbnails representation or
      * if it doesn't contain a thumbnail for the given time position.
      * @param {number} time - A relative time, in seconds, based on the return value of the {@link module:MediaPlayer#duration duration()} method is expected
+     * @param {function} callback - A Callback function provided when retrieving thumbnail
      * @memberof module:MediaPlayer
      * @instance
      */
-    function getThumbnail(time) {
+    function getThumbnail(time, callback) {
         if (time < 0) {
             return null;
         }
@@ -25862,7 +26018,7 @@ function MediaPlayer() {
         }
 
         var timeInPeriod = streamController.getTimeRelativeToStreamId(s, stream.getId());
-        return thumbnailController.get(timeInPeriod);
+        return thumbnailController.get(timeInPeriod, callback);
     }
 
     /*
@@ -25916,7 +26072,7 @@ function MediaPlayer() {
 
         eventBus.on(_coreEventsEvents2['default'].INTERNAL_MANIFEST_LOADED, handler, self);
 
-        (0, _modelsURIFragmentModel2['default'])(context).getInstance().initialize(url);
+        uriFragmentModel.initialize(url);
         manifestLoader.load(url);
     }
 
@@ -25953,7 +26109,7 @@ function MediaPlayer() {
         }
 
         if (typeof urlOrManifest === 'string') {
-            (0, _modelsURIFragmentModel2['default'])(context).getInstance().initialize(urlOrManifest);
+            uriFragmentModel.initialize(urlOrManifest);
         }
 
         source = urlOrManifest;
@@ -26035,6 +26191,14 @@ function MediaPlayer() {
         _coreFactoryMaker2['default'].extend(parentNameString, childInstance, override, context);
     }
 
+    function getActiveStream() {
+        if (!streamingInitialized) {
+            throw STREAMING_NOT_INITIALIZED_ERROR;
+        }
+        var streamInfo = streamController.getActiveStreamInfo();
+        return streamInfo ? streamController.getStreamById(streamInfo.id) : null;
+    }
+
     //***********************************
     // PRIVATE METHODS
     //***********************************
@@ -26100,7 +26264,9 @@ function MediaPlayer() {
             mediaPlayerModel: mediaPlayerModel,
             dashManifestModel: dashManifestModel,
             adapter: adapter,
-            videoModel: videoModel
+            videoModel: videoModel,
+            timelineConverter: timelineConverter,
+            uriFragmentModel: uriFragmentModel
         });
 
         abrController.setConfig({
@@ -26240,14 +26406,6 @@ function MediaPlayer() {
         return utcValue;
     }
 
-    function getActiveStream() {
-        if (!streamingInitialized) {
-            throw STREAMING_NOT_INITIALIZED_ERROR;
-        }
-        var streamInfo = streamController.getActiveStreamInfo();
-        return streamInfo ? streamController.getStreamById(streamInfo.id) : null;
-    }
-
     function initializePlayback() {
         if (!streamingInitialized && source) {
             streamingInitialized = true;
@@ -26285,8 +26443,6 @@ function MediaPlayer() {
         seek: seek,
         setPlaybackRate: setPlaybackRate,
         getPlaybackRate: getPlaybackRate,
-        setCatchUpPlaybackRate: setCatchUpPlaybackRate,
-        getCatchUpPlaybackRate: getCatchUpPlaybackRate,
         setMute: setMute,
         isMuted: isMuted,
         setVolume: setVolume,
@@ -26398,8 +26554,14 @@ function MediaPlayer() {
         getJumpGaps: getJumpGaps,
         setSmallGapLimit: setSmallGapLimit,
         getSmallGapLimit: getSmallGapLimit,
-        getLowLatencyEnabled: getLowLatencyEnabled,
         setLowLatencyEnabled: setLowLatencyEnabled,
+        getLowLatencyEnabled: getLowLatencyEnabled,
+        setCatchUpPlaybackRate: setCatchUpPlaybackRate,
+        getCatchUpPlaybackRate: getCatchUpPlaybackRate,
+        setLowLatencyMinDrift: setLowLatencyMinDrift,
+        getLowLatencyMinDrift: getLowLatencyMinDrift,
+        setLowLatencyMaxDriftBeforeSeeking: setLowLatencyMaxDriftBeforeSeeking,
+        getLowLatencyMaxDriftBeforeSeeking: getLowLatencyMaxDriftBeforeSeeking,
         setManifestUpdateRetryInterval: setManifestUpdateRetryInterval,
         getManifestUpdateRetryInterval: getManifestUpdateRetryInterval,
         setLongFormContentDurationThreshold: setLongFormContentDurationThreshold,
@@ -26434,7 +26596,7 @@ _coreFactoryMaker2['default'].updateClassFactory(MediaPlayer.__dashjs_factory_na
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"1":1,"100":100,"105":105,"107":107,"109":109,"114":114,"115":115,"116":116,"117":117,"118":118,"139":139,"141":141,"146":146,"148":148,"150":150,"155":155,"162":162,"182":182,"42":42,"43":43,"44":44,"45":45,"46":46,"49":49,"5":5,"51":51,"53":53,"58":58,"76":76,"86":86,"88":88,"91":91,"97":97,"98":98,"99":99}],91:[function(_dereq_,module,exports){
+},{"1":1,"100":100,"101":101,"102":102,"107":107,"109":109,"111":111,"116":116,"117":117,"118":118,"119":119,"120":120,"141":141,"143":143,"148":148,"150":150,"152":152,"157":157,"158":158,"165":165,"185":185,"45":45,"46":46,"47":47,"48":48,"49":49,"5":5,"52":52,"54":54,"56":56,"61":61,"78":78,"90":90,"93":93,"99":99}],93:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -26479,7 +26641,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _coreEventsEventsBase = _dereq_(50);
+var _coreEventsEventsBase = _dereq_(53);
 
 var _coreEventsEventsBase2 = _interopRequireDefault(_coreEventsEventsBase);
 
@@ -26685,23 +26847,6 @@ var MediaPlayerEvents = (function (_EventsBase) {
     this.CAN_PLAY = 'canPlay';
 
     /**
-     * Sent when live catch mechanism has been activated, which implies the measured latency of the low latency
-     * stream that is been played has gone beyond the target one.
-     * @see {@link module:MediaPlayer#setCatchUpPlaybackRate setCatchUpPlaybackRate()}
-     * @see {@link module:MediaPlayer#setLiveDelay setLiveDelay()}
-     * @event MediaPlayerEvents#PLAYBACK_CATCHUP_START
-     */
-    this.PLAYBACK_CATCHUP_START = 'playbackCatchupStart';
-
-    /**
-     * Sent live catch up mechanism has been deactivated.
-     * @see {@link module:MediaPlayer#setCatchUpPlaybackRate setCatchUpPlaybackRate()}
-     * @see {@link module:MediaPlayer#setLiveDelay setLiveDelay()}
-     * @event MediaPlayerEvents#PLAYBACK_CATCHUP_END
-     */
-    this.PLAYBACK_CATCHUP_END = 'playbackCatchupEnd';
-
-    /**
      * Sent when playback completes.
      * @event MediaPlayerEvents#PLAYBACK_ENDED
      */
@@ -26814,7 +26959,7 @@ var mediaPlayerEvents = new MediaPlayerEvents();
 exports['default'] = mediaPlayerEvents;
 module.exports = exports['default'];
 
-},{"50":50}],92:[function(_dereq_,module,exports){
+},{"53":53}],94:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -26853,11 +26998,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -26872,9 +27017,9 @@ function PreBufferSink(onAppendedCallback) {
     var context = this.context;
 
     var instance = undefined,
-        logger = undefined;
+        logger = undefined,
+        outstandingInit = undefined;
     var chunks = [];
-    var outstandingInit = undefined;
     var onAppended = onAppendedCallback;
 
     function setup() {
@@ -26998,7 +27143,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(PreBufferSink);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"42":42,"44":44}],93:[function(_dereq_,module,exports){
+},{"45":45,"47":47}],95:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -27037,31 +27182,31 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _textTextController = _dereq_(139);
+var _textTextController = _dereq_(141);
 
 var _textTextController2 = _interopRequireDefault(_textTextController);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -27076,13 +27221,12 @@ function SourceBufferSink(mediaSource, mediaInfo, onAppendedCallback, oldBuffer)
     var instance = undefined,
         logger = undefined,
         buffer = undefined,
-        isAppendingInProgress = undefined;
+        isAppendingInProgress = undefined,
+        intervalId = undefined;
 
     var callbacks = [];
-
     var appendQueue = [];
     var onAppended = onAppendedCallback;
-    var intervalId = undefined;
 
     function setup() {
         logger = (0, _coreDebug2['default'])(context).getInstance().getLogger(instance);
@@ -27358,6 +27502,7 @@ function SourceBufferSink(mediaSource, mediaInfo, onAppendedCallback, oldBuffer)
     };
 
     setup();
+
     return instance;
 }
 
@@ -27366,7 +27511,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(SourceBufferSink);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"139":139,"162":162,"42":42,"43":43,"44":44,"46":46,"49":49}],94:[function(_dereq_,module,exports){
+},{"141":141,"165":165,"45":45,"46":46,"47":47,"49":49,"52":52}],96:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -27405,47 +27550,47 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _StreamProcessor = _dereq_(95);
+var _StreamProcessor = _dereq_(97);
 
 var _StreamProcessor2 = _interopRequireDefault(_StreamProcessor);
 
-var _controllersEventController = _dereq_(103);
+var _controllersEventController = _dereq_(105);
 
 var _controllersEventController2 = _interopRequireDefault(_controllersEventController);
 
-var _controllersFragmentController = _dereq_(104);
+var _controllersFragmentController = _dereq_(106);
 
 var _controllersFragmentController2 = _interopRequireDefault(_controllersFragmentController);
 
-var _thumbnailThumbnailController = _dereq_(142);
+var _thumbnailThumbnailController = _dereq_(144);
 
 var _thumbnailThumbnailController2 = _interopRequireDefault(_thumbnailThumbnailController);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
@@ -27668,7 +27813,7 @@ function Stream(config) {
 
     function checkConfig() {
         if (!abrController || !abrController.hasOwnProperty('getBitrateList') || !adapter || !adapter.hasOwnProperty('getAllMediaInfoForType') || !adapter.hasOwnProperty('getEventsFor')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -27705,7 +27850,7 @@ function Stream(config) {
         if (event.error) {
             errHandler.mediaKeySessionError(event.error.message);
             errHandler.error(event.error);
-            logger.fatal(event);
+            logger.fatal(event.error.message);
             reset();
         }
     }
@@ -27853,7 +27998,8 @@ function Stream(config) {
                 dashManifestModel: dashManifestModel,
                 adapter: adapter,
                 baseURLController: config.baseURLController,
-                stream: instance
+                stream: instance,
+                timelineConverter: config.timelineConverter
             });
             return;
         }
@@ -28155,6 +28301,11 @@ function Stream(config) {
             return !newAdaptation && !currentAdaptation;
         }
 
+        // If any of the periods requires EME, we can't do smooth transition
+        if (newAdaptation.ContentProtection && !currentAdaptation.ContentProtection || !newAdaptation.ContentProtection && currentAdaptation.ContentProtection) {
+            return false;
+        }
+
         var sameMimeType = newAdaptation && currentAdaptation && newAdaptation.mimeType === currentAdaptation.mimeType;
         var oldCodecs = currentAdaptation.Representation_asArray.map(function (representation) {
             return representation.codecs;
@@ -28252,7 +28403,7 @@ Stream.__dashjs_factory_name = 'Stream';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(Stream);
 module.exports = exports['default'];
 
-},{"103":103,"104":104,"142":142,"162":162,"42":42,"43":43,"44":44,"46":46,"49":49,"95":95,"97":97}],95:[function(_dereq_,module,exports){
+},{"105":105,"106":106,"144":144,"165":165,"45":45,"46":46,"47":47,"49":49,"52":52,"97":97,"99":99}],97:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -28291,35 +28442,35 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _utilsLiveEdgeFinder = _dereq_(153);
+var _utilsLiveEdgeFinder = _dereq_(155);
 
 var _utilsLiveEdgeFinder2 = _interopRequireDefault(_utilsLiveEdgeFinder);
 
-var _controllersBufferController = _dereq_(102);
+var _controllersBufferController = _dereq_(104);
 
 var _controllersBufferController2 = _interopRequireDefault(_controllersBufferController);
 
-var _textTextBufferController = _dereq_(138);
+var _textTextBufferController = _dereq_(140);
 
 var _textTextBufferController2 = _interopRequireDefault(_textTextBufferController);
 
-var _controllersScheduleController = _dereq_(108);
+var _controllersScheduleController = _dereq_(110);
 
 var _controllersScheduleController2 = _interopRequireDefault(_controllersScheduleController);
 
-var _dashControllersRepresentationController = _dereq_(57);
+var _dashControllersRepresentationController = _dereq_(60);
 
 var _dashControllersRepresentationController2 = _interopRequireDefault(_dashControllersRepresentationController);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _dashDashHandler = _dereq_(52);
+var _dashDashHandler = _dereq_(55);
 
 var _dashDashHandler2 = _interopRequireDefault(_dashDashHandler);
 
@@ -28690,13 +28841,14 @@ function StreamProcessor(config) {
     };
 
     setup();
+
     return instance;
 }
 StreamProcessor.__dashjs_factory_name = 'StreamProcessor';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(StreamProcessor);
 module.exports = exports['default'];
 
-},{"102":102,"108":108,"138":138,"153":153,"44":44,"52":52,"57":57,"97":97}],96:[function(_dereq_,module,exports){
+},{"104":104,"110":110,"140":140,"155":155,"47":47,"55":55,"60":60,"99":99}],98:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -28735,33 +28887,33 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _netHTTPLoader = _dereq_(120);
+var _netHTTPLoader = _dereq_(122);
 
 var _netHTTPLoader2 = _interopRequireDefault(_netHTTPLoader);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _voTextRequest = _dereq_(173);
+var _voTextRequest = _dereq_(176);
 
 var _voTextRequest2 = _interopRequireDefault(_voTextRequest);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -28830,7 +28982,7 @@ XlinkLoader.__dashjs_factory_name = 'XlinkLoader';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(XlinkLoader);
 module.exports = exports['default'];
 
-},{"120":120,"162":162,"173":173,"182":182,"43":43,"44":44,"46":46,"49":49}],97:[function(_dereq_,module,exports){
+},{"122":122,"165":165,"176":176,"185":185,"46":46,"47":47,"49":49,"52":52}],99:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -28908,6 +29060,8 @@ var Constants = (function () {
             this.ABR_STRATEGY_THROUGHPUT = 'abrThroughput';
             this.MOVING_AVERAGE_SLIDING_WINDOW = 'slidingWindow';
             this.MOVING_AVERAGE_EWMA = 'ewma';
+            this.BAD_ARGUMENT_ERROR = 'Invalid Arguments';
+            this.MISSING_CONFIG_ERROR = 'Missing config parameter(s)';
         }
     }]);
 
@@ -28924,7 +29078,7 @@ var constants = new Constants();
 exports['default'] = constants;
 module.exports = exports['default'];
 
-},{}],98:[function(_dereq_,module,exports){
+},{}],100:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -29005,7 +29159,7 @@ var constants = new MetricsConstants();
 exports['default'] = constants;
 module.exports = exports['default'];
 
-},{}],99:[function(_dereq_,module,exports){
+},{}],101:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -29045,63 +29199,65 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _rulesAbrABRRulesCollection = _dereq_(127);
+var _rulesAbrABRRulesCollection = _dereq_(129);
 
 var _rulesAbrABRRulesCollection2 = _interopRequireDefault(_rulesAbrABRRulesCollection);
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _constantsMetricsConstants = _dereq_(98);
+var _constantsMetricsConstants = _dereq_(100);
 
 var _constantsMetricsConstants2 = _interopRequireDefault(_constantsMetricsConstants);
 
-var _voBitrateInfo = _dereq_(161);
+var _voBitrateInfo = _dereq_(164);
 
 var _voBitrateInfo2 = _interopRequireDefault(_voBitrateInfo);
 
-var _modelsFragmentModel = _dereq_(113);
+var _modelsFragmentModel = _dereq_(115);
 
 var _modelsFragmentModel2 = _interopRequireDefault(_modelsFragmentModel);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _rulesRulesContext = _dereq_(123);
+var _rulesRulesContext = _dereq_(125);
 
 var _rulesRulesContext2 = _interopRequireDefault(_rulesRulesContext);
 
-var _rulesSwitchRequest = _dereq_(124);
+var _rulesSwitchRequest = _dereq_(126);
 
 var _rulesSwitchRequest2 = _interopRequireDefault(_rulesSwitchRequest);
 
-var _rulesSwitchRequestHistory = _dereq_(125);
+var _rulesSwitchRequestHistory = _dereq_(127);
 
 var _rulesSwitchRequestHistory2 = _interopRequireDefault(_rulesSwitchRequestHistory);
 
-var _rulesDroppedFramesHistory = _dereq_(122);
+var _rulesDroppedFramesHistory = _dereq_(124);
 
 var _rulesDroppedFramesHistory2 = _interopRequireDefault(_rulesDroppedFramesHistory);
 
-var _rulesThroughputHistory = _dereq_(126);
+var _rulesThroughputHistory = _dereq_(128);
 
 var _rulesThroughputHistory2 = _interopRequireDefault(_rulesThroughputHistory);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
+
+var _utilsSupervisorTools = _dereq_(158);
 
 var ABANDON_LOAD = 'abandonload';
 var ALLOW_LOAD = 'allowload';
@@ -29256,6 +29412,12 @@ function AbrController() {
         }
     }
 
+    function checkConfig() {
+        if (!domStorage || !domStorage.hasOwnProperty('getSavedBitrateSettings')) {
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
+        }
+    }
+
     function onQualityChangeRendered(e) {
         if (e.mediaType === _constantsConstants2['default'].VIDEO) {
             playbackIndex = e.oldQuality;
@@ -29310,6 +29472,7 @@ function AbrController() {
      * @memberof AbrController#
      */
     function getInitialBitrateFor(type) {
+        checkConfig();
         var savedBitrate = domStorage.getSavedBitrateSettings(type);
 
         if (!bitrateDict.hasOwnProperty(type)) {
@@ -29339,6 +29502,8 @@ function AbrController() {
      * @memberof AbrController#
      */
     function setInitialBitrateFor(type, value) {
+        (0, _utilsSupervisorTools.checkIsVideoOrAudioType)(type);
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bitrateDict[type] = value;
     }
 
@@ -29371,11 +29536,15 @@ function AbrController() {
     //TODO  change bitrateDict structure to hold one object for video and audio with initial and max values internal.
     // This means you need to update all the logic around initial bitrate DOMStorage, RebController etc...
     function setMaxAllowedBitrateFor(type, value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        (0, _utilsSupervisorTools.checkIsVideoOrAudioType)(type);
         bitrateDict.max = bitrateDict.max || {};
         bitrateDict.max[type] = value;
     }
 
     function setMinAllowedBitrateFor(type, value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        (0, _utilsSupervisorTools.checkIsVideoOrAudioType)(type);
         bitrateDict.min = bitrateDict.min || {};
         bitrateDict.min[type] = value;
     }
@@ -29423,9 +29592,8 @@ function AbrController() {
     }
 
     function setAutoSwitchBitrateFor(type, value) {
-        if (typeof value !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
+        (0, _utilsSupervisorTools.checkIsVideoOrAudioType)(type);
         autoSwitchBitrate[type] = value;
     }
 
@@ -29434,6 +29602,7 @@ function AbrController() {
     }
 
     function setLimitBitrateByPortal(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         limitBitrateByPortal = value;
     }
 
@@ -29442,9 +29611,7 @@ function AbrController() {
     }
 
     function setUsePixelRatioInLimitBitrateByPortal(value) {
-        if (typeof value !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         usePixelRatioInLimitBitrateByPortal = value;
     }
 
@@ -29453,6 +29620,7 @@ function AbrController() {
     }
 
     function setUseDeadTimeLatency(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         useDeadTimeLatency = value;
     }
 
@@ -29502,19 +29670,11 @@ function AbrController() {
         }
     }
 
-    function checkQuality(quality) {
-        var isInt = quality !== null && !isNaN(quality) && quality % 1 === 0;
-
-        if (!isInt) {
-            throw new Error('argument is not an integer');
-        }
-    }
-
     function setPlaybackQuality(type, streamInfo, newQuality, reason) {
         var id = streamInfo.id;
         var oldQuality = getQualityFor(type);
 
-        checkQuality(newQuality);
+        (0, _utilsSupervisorTools.checkInteger)(newQuality);
 
         var topQualityIdx = getTopQualityIndexFor(type, id);
         if (newQuality !== oldQuality && newQuality >= 0 && newQuality <= topQualityIdx) {
@@ -29845,7 +30005,7 @@ _coreFactoryMaker2['default'].updateSingletonFactory(AbrController.__dashjs_fact
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"113":113,"122":122,"123":123,"124":124,"125":125,"126":126,"127":127,"161":161,"182":182,"42":42,"43":43,"44":44,"49":49,"97":97,"98":98}],100:[function(_dereq_,module,exports){
+},{"100":100,"115":115,"124":124,"125":125,"126":126,"127":127,"128":128,"129":129,"158":158,"164":164,"185":185,"45":45,"46":46,"47":47,"52":52,"99":99}],102:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -29885,31 +30045,31 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _modelsBaseURLTreeModel = _dereq_(112);
+var _modelsBaseURLTreeModel = _dereq_(114);
 
 var _modelsBaseURLTreeModel2 = _interopRequireDefault(_modelsBaseURLTreeModel);
 
-var _utilsBaseURLSelector = _dereq_(144);
+var _utilsBaseURLSelector = _dereq_(146);
 
 var _utilsBaseURLSelector2 = _interopRequireDefault(_utilsBaseURLSelector);
 
-var _utilsURLUtils = _dereq_(157);
+var _utilsURLUtils = _dereq_(160);
 
 var _utilsURLUtils2 = _interopRequireDefault(_utilsURLUtils);
 
-var _dashVoBaseURL = _dereq_(79);
+var _dashVoBaseURL = _dereq_(81);
 
 var _dashVoBaseURL2 = _interopRequireDefault(_dashVoBaseURL);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
@@ -30016,7 +30176,7 @@ BaseURLController.__dashjs_factory_name = 'BaseURLController';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(BaseURLController);
 module.exports = exports['default'];
 
-},{"112":112,"144":144,"157":157,"43":43,"44":44,"49":49,"79":79}],101:[function(_dereq_,module,exports){
+},{"114":114,"146":146,"160":160,"46":46,"47":47,"52":52,"81":81}],103:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -30056,11 +30216,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
@@ -30120,7 +30280,7 @@ BlackListController.__dashjs_factory_name = 'BlackListController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BlackListController);
 module.exports = exports['default'];
 
-},{"43":43,"44":44}],102:[function(_dereq_,module,exports){
+},{"46":46,"47":47}],104:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -30159,63 +30319,63 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _modelsFragmentModel = _dereq_(113);
+var _modelsFragmentModel = _dereq_(115);
 
 var _modelsFragmentModel2 = _interopRequireDefault(_modelsFragmentModel);
 
-var _SourceBufferSink = _dereq_(93);
+var _SourceBufferSink = _dereq_(95);
 
 var _SourceBufferSink2 = _interopRequireDefault(_SourceBufferSink);
 
-var _PreBufferSink = _dereq_(92);
+var _PreBufferSink = _dereq_(94);
 
 var _PreBufferSink2 = _interopRequireDefault(_PreBufferSink);
 
-var _AbrController = _dereq_(99);
+var _AbrController = _dereq_(101);
 
 var _AbrController2 = _interopRequireDefault(_AbrController);
 
-var _MediaController = _dereq_(105);
+var _MediaController = _dereq_(107);
 
 var _MediaController2 = _interopRequireDefault(_MediaController);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _utilsBoxParser = _dereq_(145);
+var _utilsBoxParser = _dereq_(147);
 
 var _utilsBoxParser2 = _interopRequireDefault(_utilsBoxParser);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _utilsInitCache = _dereq_(151);
+var _utilsInitCache = _dereq_(153);
 
 var _utilsInitCache2 = _interopRequireDefault(_utilsInitCache);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
 var BUFFER_LOADED = 'bufferLoaded';
 var BUFFER_EMPTY = 'bufferStalled';
@@ -30769,8 +30929,10 @@ function BufferController(config) {
 
     /* prune buffer on our own in background to avoid browsers pruning buffer silently */
     function pruneBuffer() {
-        if (!buffer) return;
-        if (type === _constantsConstants2['default'].FRAGMENTED_TEXT) return;
+        if (!buffer || type === _constantsConstants2['default'].FRAGMENTED_TEXT) {
+            return;
+        }
+
         if (!isBufferingCompleted) {
             clearBuffers(getClearRanges());
         }
@@ -31101,7 +31263,7 @@ _coreFactoryMaker2['default'].updateClassFactory(BufferController.__dashjs_facto
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"105":105,"113":113,"145":145,"151":151,"162":162,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"92":92,"93":93,"97":97,"99":99}],103:[function(_dereq_,module,exports){
+},{"101":101,"107":107,"115":115,"147":147,"153":153,"165":165,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"94":94,"95":95,"99":99}],105:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -31141,19 +31303,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
@@ -31383,7 +31545,7 @@ EventController.__dashjs_factory_name = 'EventController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(EventController);
 module.exports = exports['default'];
 
-},{"42":42,"43":43,"44":44,"49":49}],104:[function(_dereq_,module,exports){
+},{"45":45,"46":46,"47":47,"52":52}],106:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -31422,41 +31584,41 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _voDataChunk = _dereq_(163);
+var _voDataChunk = _dereq_(166);
 
 var _voDataChunk2 = _interopRequireDefault(_voDataChunk);
 
-var _modelsFragmentModel = _dereq_(113);
+var _modelsFragmentModel = _dereq_(115);
 
 var _modelsFragmentModel2 = _interopRequireDefault(_modelsFragmentModel);
 
-var _FragmentLoader = _dereq_(87);
+var _FragmentLoader = _dereq_(89);
 
 var _FragmentLoader2 = _interopRequireDefault(_FragmentLoader);
 
-var _utilsRequestModifier = _dereq_(155);
+var _utilsRequestModifier = _dereq_(157);
 
 var _utilsRequestModifier2 = _interopRequireDefault(_utilsRequestModifier);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -31578,7 +31740,7 @@ FragmentController.__dashjs_factory_name = 'FragmentController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(FragmentController);
 module.exports = exports['default'];
 
-},{"113":113,"155":155,"163":163,"182":182,"42":42,"43":43,"44":44,"49":49,"87":87,"97":97}],105:[function(_dereq_,module,exports){
+},{"115":115,"157":157,"166":166,"185":185,"45":45,"46":46,"47":47,"52":52,"89":89,"99":99}],107:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -31617,23 +31779,23 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -32113,7 +32275,7 @@ _coreFactoryMaker2['default'].updateSingletonFactory(MediaController.__dashjs_fa
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"42":42,"43":43,"44":44,"49":49,"97":97}],106:[function(_dereq_,module,exports){
+},{"45":45,"46":46,"47":47,"52":52,"99":99}],108:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -32152,11 +32314,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -32251,7 +32413,7 @@ MediaSourceController.__dashjs_factory_name = 'MediaSourceController';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(MediaSourceController);
 module.exports = exports['default'];
 
-},{"42":42,"44":44}],107:[function(_dereq_,module,exports){
+},{"45":45,"47":47}],109:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -32290,40 +32452,31 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _BufferController = _dereq_(102);
+var _BufferController = _dereq_(104);
 
 var _BufferController2 = _interopRequireDefault(_BufferController);
 
-var _modelsURIFragmentModel = _dereq_(117);
-
-var _modelsURIFragmentModel2 = _interopRequireDefault(_modelsURIFragmentModel);
-
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
 var LIVE_UPDATE_PLAYBACK_TIME_INTERVAL_MS = 500;
-var DEFAULT_CATCHUP_PLAYBACK_RATE = 0.05;
-
-// Start catching up mechanism for low latency live streaming
-// when latency goes beyong targetDelay * (1 + LIVE_CATCHUP_START_THRESHOLD)
-var LIVE_CATCHUP_START_THRESHOLD = 0.35;
 
 function PlaybackController() {
 
@@ -32339,7 +32492,7 @@ function PlaybackController() {
         dashManifestModel = undefined,
         adapter = undefined,
         videoModel = undefined,
-        currentTime = undefined,
+        timelineConverter = undefined,
         liveStartTime = undefined,
         wallclockTimeIntervalId = undefined,
         commonEarliestTime = undefined,
@@ -32350,14 +32503,16 @@ function PlaybackController() {
         mediaPlayerModel = undefined,
         playOnceInitialized = undefined,
         lastLivePlaybackTime = undefined,
-        originalPlaybackRate = undefined,
         availabilityStartTime = undefined,
-        compatibleWithPreviousStream = undefined;
-
-    var catchUpPlaybackRate = DEFAULT_CATCHUP_PLAYBACK_RATE;
+        compatibleWithPreviousStream = undefined,
+        isLowLatencySeekingInProgress = undefined,
+        playbackStalled = undefined,
+        minPlaybackRateChange = undefined,
+        uriFragmentModel = undefined;
 
     function setup() {
         logger = (0, _coreDebug2['default'])(context).getInstance().getLogger(instance);
+
         reset();
     }
 
@@ -32365,10 +32520,20 @@ function PlaybackController() {
         streamInfo = StreamInfo;
         addAllListeners();
         isDynamic = streamInfo.manifestInfo.isDynamic;
+        isLowLatencySeekingInProgress = false;
+        playbackStalled = false;
         liveStartTime = streamInfo.start;
         compatibleWithPreviousStream = compatible;
+
+        var ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : '';
+
+        // Detect safari browser (special behavior for low latency streams)
+        var isSafari = /safari/.test(ua) && !/chrome/.test(ua);
+        minPlaybackRateChange = isSafari ? 0.25 : 0.02;
+
         eventBus.on(_coreEventsEvents2['default'].DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
         eventBus.on(_coreEventsEvents2['default'].BYTES_APPENDED_END_FRAGMENT, onBytesAppended, this);
+        eventBus.on(_coreEventsEvents2['default'].LOADING_PROGRESS, onFragmentLoadProgress, this);
         eventBus.on(_coreEventsEvents2['default'].BUFFER_LEVEL_STATE_CHANGED, onBufferLevelStateChanged, this);
         eventBus.on(_coreEventsEvents2['default'].PERIOD_SWITCH_STARTED, onPeriodSwitchStarted, this);
         eventBus.on(_coreEventsEvents2['default'].PLAYBACK_PROGRESS, onPlaybackProgression, this);
@@ -32438,8 +32603,30 @@ function PlaybackController() {
         }
     }
 
+    function seekToLive() {
+        var metrics = metricsModel.getReadOnlyMetricsFor(_constantsConstants2['default'].VIDEO) || metricsModel.getReadOnlyMetricsFor(_constantsConstants2['default'].AUDIO);
+        var DVRMetrics = dashMetrics.getCurrentDVRInfo(metrics);
+        var DVRWindow = DVRMetrics ? DVRMetrics.range : null;
+
+        seek(DVRWindow.end - mediaPlayerModel.getLiveDelay(), true, false);
+    }
+
     function getTime() {
         return streamInfo && videoModel ? videoModel.getTime() : null;
+    }
+
+    function getNormalizedTime() {
+        var t = getTime();
+
+        if (isDynamic && !isNaN(availabilityStartTime)) {
+            var timeOffset = availabilityStartTime / 1000;
+            // Fix current time for firefox and safari (returned as an absolute time)
+            if (t > timeOffset) {
+                t -= timeOffset;
+            }
+        }
+
+        return t;
     }
 
     function getPlaybackRate() {
@@ -32468,19 +32655,6 @@ function PlaybackController() {
 
     function getLiveStartTime() {
         return liveStartTime;
-    }
-
-    function setCatchUpPlaybackRate(value) {
-        catchUpPlaybackRate = value;
-
-        // If value == 0.0, deactivate catchup mechanism
-        if (value === 0.0 && getPlaybackRate() > 1.0) {
-            stopPlaybackCatchUp();
-        }
-    }
-
-    function getCatchUpPlaybackRate() {
-        return catchUpPlaybackRate;
     }
 
     /**
@@ -32534,53 +32708,27 @@ function PlaybackController() {
         if (!isDynamic || isNaN(availabilityStartTime)) {
             return NaN;
         }
-        var currentTime = getTime();
+        var currentTime = getNormalizedTime();
         if (isNaN(currentTime) || currentTime === 0) {
             return 0;
         }
 
-        return (Math.round(new Date().getTime() - (currentTime * 1000 + availabilityStartTime)) / 1000).toFixed(3);
-    }
-
-    function startPlaybackCatchUp() {
-        if (videoModel) {
-            var playbackRate = 1 + getCatchUpPlaybackRate();
-            var currentRate = getPlaybackRate();
-            if (playbackRate !== currentRate) {
-                logger.info('Starting live catchup mechanism. Setting playback rate to', playbackRate);
-                originalPlaybackRate = currentRate;
-                videoModel.setPlaybackRate(playbackRate);
-
-                eventBus.trigger(_coreEventsEvents2['default'].PLAYBACK_CATCHUP_START, { sender: instance });
-            }
-        }
-    }
-
-    function stopPlaybackCatchUp() {
-        if (videoModel) {
-            var playbackRate = originalPlaybackRate || 1;
-            if (playbackRate !== getPlaybackRate()) {
-                logger.info('Stopping live catchup mechanism. Setting playback rate to', playbackRate);
-                videoModel.setPlaybackRate(playbackRate);
-
-                eventBus.trigger(_coreEventsEvents2['default'].PLAYBACK_CATCHUP_END, { sender: instance });
-            }
-        }
+        var now = new Date().getTime() + timelineConverter.getClientTimeOffset() * 1000;
+        return Math.max(((now - availabilityStartTime - currentTime * 1000) / 1000).toFixed(3), 0);
     }
 
     function reset() {
-        currentTime = 0;
         liveStartTime = NaN;
         playOnceInitialized = false;
         commonEarliestTime = {};
         liveDelay = 0;
         availabilityStartTime = 0;
-        catchUpPlaybackRate = DEFAULT_CATCHUP_PLAYBACK_RATE;
         bufferedRange = {};
         if (videoModel) {
             eventBus.off(_coreEventsEvents2['default'].DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
             eventBus.off(_coreEventsEvents2['default'].BUFFER_LEVEL_STATE_CHANGED, onBufferLevelStateChanged, this);
             eventBus.off(_coreEventsEvents2['default'].BYTES_APPENDED_END_FRAGMENT, onBytesAppended, this);
+            eventBus.off(_coreEventsEvents2['default'].LOADING_PROGRESS, onFragmentLoadProgress, this);
             eventBus.off(_coreEventsEvents2['default'].PERIOD_SWITCH_STARTED, onPeriodSwitchStarted, this);
             eventBus.off(_coreEventsEvents2['default'].PLAYBACK_PROGRESS, onPlaybackProgression, this);
             eventBus.off(_coreEventsEvents2['default'].PLAYBACK_TIME_UPDATED, onPlaybackProgression, this);
@@ -32621,10 +32769,16 @@ function PlaybackController() {
         if (config.videoModel) {
             videoModel = config.videoModel;
         }
+        if (config.timelineConverter) {
+            timelineConverter = config.timelineConverter;
+        }
+        if (config.uriFragmentModel) {
+            uriFragmentModel = config.uriFragmentModel;
+        }
     }
 
     function getStartTimeFromUriParameters() {
-        var fragData = (0, _modelsURIFragmentModel2['default'])(context).getInstance().getURIFragmentData();
+        var fragData = uriFragmentModel.getURIFragmentData();
         var uriParameters = undefined;
         if (fragData) {
             uriParameters = {};
@@ -32647,17 +32801,16 @@ function PlaybackController() {
     function getStreamStartTime(ignoreStartOffset, liveEdge) {
         var presentationStartTime = undefined;
         var startTimeOffset = NaN;
-        var uriParameters = getStartTimeFromUriParameters();
 
-        if (uriParameters) {
-            if (!ignoreStartOffset) {
+        if (!ignoreStartOffset) {
+            var uriParameters = getStartTimeFromUriParameters();
+            if (uriParameters) {
                 startTimeOffset = !isNaN(uriParameters.fragS) ? uriParameters.fragS : uriParameters.fragT;
             } else {
-                startTimeOffset = streamInfo.start;
+                startTimeOffset = 0;
             }
         } else {
-            // handle case where no media fragments are parsed from the manifest URL
-            startTimeOffset = 0;
+            startTimeOffset = streamInfo.start;
         }
 
         if (isDynamic) {
@@ -32719,8 +32872,9 @@ function PlaybackController() {
 
     function updateCurrentTime() {
         if (isPaused() || !isDynamic || videoModel.getReadyState() === 0) return;
-        var currentTime = getTime();
+        var currentTime = getNormalizedTime();
         var actualTime = getActualPresentationTime(currentTime);
+
         var timeChanged = !isNaN(actualTime) && actualTime !== currentTime;
         if (timeChanged) {
             seek(actualTime);
@@ -32790,11 +32944,9 @@ function PlaybackController() {
     }
 
     function onPlaybackTimeUpdated() {
-        var time = getTime();
-        currentTime = time;
         eventBus.trigger(_coreEventsEvents2['default'].PLAYBACK_TIME_UPDATED, {
             timeToEnd: getTimeToStreamEnd(),
-            time: time
+            time: getTime()
         });
     }
 
@@ -32836,7 +32988,7 @@ function PlaybackController() {
     function onPlaybackEnded(e) {
         if (wallclockTimeIntervalId && e.isLast) {
             // PLAYBACK_ENDED was triggered elsewhere, react.
-            logger.info('[PlaybackController] onPlaybackEnded -- PLAYBACK_ENDED but native video element didn\'t fire ended');
+            logger.info('onPlaybackEnded -- PLAYBACK_ENDED but native video element didn\'t fire ended');
             videoModel.setCurrentTime(getStreamEndTime());
             pause();
             stopUpdatingWallclockTime();
@@ -32875,25 +33027,74 @@ function PlaybackController() {
     }
 
     function onPlaybackProgression() {
-        if (isDynamic && mediaPlayerModel.getLowLatencyEnabled() && getCatchUpPlaybackRate() > 0.0) {
-            if (!isCatchingUp() && needToCatchUp()) {
+        if (isDynamic && mediaPlayerModel.getLowLatencyEnabled() && !isPaused() && !isSeeking()) {
+            if (needToCatchUp()) {
                 startPlaybackCatchUp();
-            } else if (stopCatchingUp()) {
+            } else {
                 stopPlaybackCatchUp();
             }
         }
     }
 
+    function getBufferLevel() {
+        var bufferLevel = null;
+        streamController.getActiveStreamProcessors().forEach(function (p) {
+            var bl = p.getBufferLevel();
+            if (bufferLevel === null) {
+                bufferLevel = bl;
+            } else {
+                bufferLevel = Math.min(bufferLevel, bl);
+            }
+        });
+
+        return bufferLevel;
+    }
+
     function needToCatchUp() {
-        return getCurrentLiveLatency() > mediaPlayerModel.getLiveDelay() * (1 + LIVE_CATCHUP_START_THRESHOLD);
+        return mediaPlayerModel.getCatchUpPlaybackRate() > 0 && getTime() > 0 && Math.abs(getCurrentLiveLatency() - mediaPlayerModel.getLiveDelay()) > mediaPlayerModel.getLowLatencyMinDrift();
     }
 
-    function stopCatchingUp() {
-        return getCurrentLiveLatency() <= mediaPlayerModel.getLiveDelay();
+    function startPlaybackCatchUp() {
+        if (videoModel) {
+            var cpr = mediaPlayerModel.getCatchUpPlaybackRate();
+            var _liveDelay = mediaPlayerModel.getLiveDelay();
+            var deltaLatency = getCurrentLiveLatency() - _liveDelay;
+            var d = deltaLatency * 5;
+            // Playback rate must be between (1 - cpr) - (1 + cpr)
+            // ex: if cpr is 0.5, it can have values between 0.5 - 1.5
+            var s = cpr * 2 / (1 + Math.pow(Math.E, -d));
+            var newRate = 1 - cpr + s;
+            // take into account situations in which there are buffer stalls,
+            // in which increasing playbackRate to reach target latency will
+            // just cause more and more stall situations
+            if (playbackStalled) {
+                var bufferLevel = getBufferLevel();
+                if (bufferLevel > _liveDelay / 2) {
+                    playbackStalled = false;
+                } else if (deltaLatency > 0) {
+                    newRate = 1.0;
+                }
+            }
+
+            // don't change playbackrate for small variations (don't overload element with playbackrate changes)
+            if (Math.abs(videoModel.getPlaybackRate() - newRate) > minPlaybackRateChange) {
+                videoModel.setPlaybackRate(newRate);
+            }
+
+            if (mediaPlayerModel.getLowLatencyMaxDriftBeforeSeeking() > 0 && !isLowLatencySeekingInProgress && deltaLatency > mediaPlayerModel.getLowLatencyMaxDriftBeforeSeeking()) {
+                logger.info('Low Latency catchup mechanism. Latency too high, doing a seek to live point');
+                isLowLatencySeekingInProgress = true;
+                seekToLive();
+            } else {
+                isLowLatencySeekingInProgress = false;
+            }
+        }
     }
 
-    function isCatchingUp() {
-        return getCatchUpPlaybackRate() + 1 === getPlaybackRate();
+    function stopPlaybackCatchUp() {
+        if (videoModel) {
+            videoModel.setPlaybackRate(1.0);
+        }
     }
 
     function onBytesAppended(e) {
@@ -32961,10 +33162,29 @@ function PlaybackController() {
         }
     }
 
+    function onFragmentLoadProgress(e) {
+        // If using fetch and stream mode is not available, readjust live latency so it is 20% higher than segment duration
+        if (e.stream === false && mediaPlayerModel.getLowLatencyEnabled() && !isNaN(e.request.duration)) {
+            var minDelay = 1.2 * e.request.duration;
+            if (minDelay > mediaPlayerModel.getLiveDelay()) {
+                logger.warn('Browser does not support fetch API with StreamReader. Increasing live delay to be 20% higher than segment duration:', minDelay.toFixed(2));
+                mediaPlayerModel.setLiveDelay(minDelay);
+            }
+        }
+    }
+
     function onBufferLevelStateChanged(e) {
         // do not stall playback when get an event from Stream that is not active
         if (e.streamInfo.id !== streamInfo.id) return;
-        videoModel.setStallState(e.mediaType, e.state === _BufferController2['default'].BUFFER_EMPTY);
+
+        if (e.state === _BufferController2['default'].BUFFER_EMPTY && !isSeeking()) {
+            if (!playbackStalled) {
+                playbackStalled = true;
+                if (!mediaPlayerModel.getLowLatencyEnabled()) {
+                    stopPlaybackCatchUp();
+                }
+            }
+        }
     }
 
     function onPlaybackStalled(e) {
@@ -33014,12 +33234,12 @@ function PlaybackController() {
         getStreamStartTime: getStreamStartTime,
         getTimeToStreamEnd: getTimeToStreamEnd,
         getTime: getTime,
+        getNormalizedTime: getNormalizedTime,
         getPlaybackRate: getPlaybackRate,
         getPlayedRanges: getPlayedRanges,
         getEnded: getEnded,
         getIsDynamic: getIsDynamic,
         getStreamController: getStreamController,
-        setCatchUpPlaybackRate: setCatchUpPlaybackRate,
         setLiveStartTime: setLiveStartTime,
         getLiveStartTime: getLiveStartTime,
         computeLiveDelay: computeLiveDelay,
@@ -33042,7 +33262,7 @@ PlaybackController.__dashjs_factory_name = 'PlaybackController';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(PlaybackController);
 module.exports = exports['default'];
 
-},{"102":102,"117":117,"42":42,"43":43,"44":44,"49":49,"97":97}],108:[function(_dereq_,module,exports){
+},{"104":104,"45":45,"46":46,"47":47,"52":52,"99":99}],110:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -33081,53 +33301,53 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _voMetricsPlayList = _dereq_(184);
+var _voMetricsPlayList = _dereq_(187);
 
-var _AbrController = _dereq_(99);
+var _AbrController = _dereq_(101);
 
 var _AbrController2 = _interopRequireDefault(_AbrController);
 
-var _BufferController = _dereq_(102);
+var _BufferController = _dereq_(104);
 
 var _BufferController2 = _interopRequireDefault(_BufferController);
 
-var _rulesSchedulingBufferLevelRule = _dereq_(134);
+var _rulesSchedulingBufferLevelRule = _dereq_(136);
 
 var _rulesSchedulingBufferLevelRule2 = _interopRequireDefault(_rulesSchedulingBufferLevelRule);
 
-var _rulesSchedulingNextFragmentRequestRule = _dereq_(135);
+var _rulesSchedulingNextFragmentRequestRule = _dereq_(137);
 
 var _rulesSchedulingNextFragmentRequestRule2 = _interopRequireDefault(_rulesSchedulingNextFragmentRequestRule);
 
-var _modelsFragmentModel = _dereq_(113);
+var _modelsFragmentModel = _dereq_(115);
 
 var _modelsFragmentModel2 = _interopRequireDefault(_modelsFragmentModel);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _MediaController = _dereq_(105);
+var _MediaController = _dereq_(107);
 
 var _MediaController2 = _interopRequireDefault(_MediaController);
 
-var _dashUtilsSegmentsUtils = _dereq_(74);
+var _dashUtilsSegmentsUtils = _dereq_(76);
 
 function ScheduleController(config) {
 
@@ -33299,12 +33519,12 @@ function ScheduleController(config) {
                         if (!streamProcessor.getBufferController().getIsPruningInProgress()) {
                             request = nextFragmentRequestRule.execute(streamProcessor, replacement);
                             if (!request && streamInfo.manifestInfo && streamInfo.manifestInfo.isDynamic) {
-                                logger.info('Playing at the bleeding live edge and frag is not available yet');
+                                logger.debug('Next fragment seems to be at the bleeding live edge and is not available yet. Rescheduling.');
                             }
                         }
 
                         if (request) {
-                            logger.debug('getNextFragment - request is ' + request.url);
+                            logger.debug('Next fragment request url is ' + request.url);
                             fragmentModel.executeRequest(request);
                         } else {
                             // Use case - Playing at the bleeding live edge and frag is not available yet. Cycle back around.
@@ -33795,7 +34015,7 @@ ScheduleController.__dashjs_factory_name = 'ScheduleController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ScheduleController);
 module.exports = exports['default'];
 
-},{"102":102,"105":105,"113":113,"134":134,"135":135,"184":184,"42":42,"43":43,"44":44,"49":49,"74":74,"97":97,"99":99}],109:[function(_dereq_,module,exports){
+},{"101":101,"104":104,"107":107,"115":115,"136":136,"137":137,"187":187,"45":45,"46":46,"47":47,"52":52,"76":76,"99":99}],111:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -33834,73 +34054,69 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _constantsMetricsConstants = _dereq_(98);
+var _constantsMetricsConstants = _dereq_(100);
 
 var _constantsMetricsConstants2 = _interopRequireDefault(_constantsMetricsConstants);
 
-var _Stream = _dereq_(94);
+var _Stream = _dereq_(96);
 
 var _Stream2 = _interopRequireDefault(_Stream);
 
-var _ManifestUpdater = _dereq_(89);
+var _ManifestUpdater = _dereq_(91);
 
 var _ManifestUpdater2 = _interopRequireDefault(_ManifestUpdater);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _modelsMediaPlayerModel = _dereq_(115);
-
-var _modelsMediaPlayerModel2 = _interopRequireDefault(_modelsMediaPlayerModel);
-
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voMetricsPlayList = _dereq_(184);
+var _voMetricsPlayList = _dereq_(187);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _utilsInitCache = _dereq_(151);
+var _utilsInitCache = _dereq_(153);
 
 var _utilsInitCache2 = _interopRequireDefault(_utilsInitCache);
 
-var _utilsURLUtils = _dereq_(157);
+var _utilsURLUtils = _dereq_(160);
 
 var _utilsURLUtils2 = _interopRequireDefault(_utilsURLUtils);
 
-var _MediaPlayerEvents = _dereq_(91);
+var _MediaPlayerEvents = _dereq_(93);
 
 var _MediaPlayerEvents2 = _interopRequireDefault(_MediaPlayerEvents);
 
-var _TimeSyncController = _dereq_(110);
+var _TimeSyncController = _dereq_(112);
 
 var _TimeSyncController2 = _interopRequireDefault(_TimeSyncController);
 
-var _BaseURLController = _dereq_(100);
+var _BaseURLController = _dereq_(102);
 
 var _BaseURLController2 = _interopRequireDefault(_BaseURLController);
 
-var _MediaSourceController = _dereq_(106);
+var _MediaSourceController = _dereq_(108);
 
 var _MediaSourceController2 = _interopRequireDefault(_MediaSourceController);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -34558,7 +34774,7 @@ function StreamController() {
 
                 //If https is detected on manifest then lets apply that protocol to only the default time source(s). In the future we may find the need to apply this to more then just default so left code at this level instead of in MediaPlayer.
                 allUTCTimingSources.forEach(function (item) {
-                    if (item.value.replace(/.*?:\/\//g, '') === _modelsMediaPlayerModel2['default'].DEFAULT_UTC_TIMING_SOURCE.value.replace(/.*?:\/\//g, '')) {
+                    if (item.value.replace(/.*?:\/\//g, '') === mediaPlayerModel.getDefaultUtcTimingSource().value.replace(/.*?:\/\//g, '')) {
                         item.value = item.value.replace(isHTTPS ? new RegExp(/^(http:)?\/\//i) : new RegExp(/^(https:)?\/\//i), isHTTPS ? 'https://' : 'http://');
                         logger.debug('Matching default timing source protocol to manifest protocol: ', item.value);
                     }
@@ -34880,7 +35096,7 @@ StreamController.__dashjs_factory_name = 'StreamController';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(StreamController);
 module.exports = exports['default'];
 
-},{"100":100,"106":106,"110":110,"115":115,"151":151,"157":157,"162":162,"184":184,"42":42,"43":43,"44":44,"46":46,"49":49,"89":89,"91":91,"94":94,"97":97,"98":98}],110:[function(_dereq_,module,exports){
+},{"100":100,"102":102,"108":108,"112":112,"153":153,"160":160,"165":165,"187":187,"45":45,"46":46,"47":47,"49":49,"52":52,"91":91,"93":93,"96":96,"99":99}],112:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -34919,37 +35135,37 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _utilsURLUtils = _dereq_(157);
+var _utilsURLUtils = _dereq_(160);
 
 var _utilsURLUtils2 = _interopRequireDefault(_utilsURLUtils);
 
@@ -35206,16 +35422,7 @@ function TimeSyncController() {
     }
 
     function calculateTimeOffset(serverTime, deviceTime) {
-        var v = (serverTime - deviceTime) / 1000;
-        var offset = undefined;
-        // Math.trunc not implemented by IE11
-        if (Math.trunc) {
-            offset = Math.trunc(v);
-        } else {
-            offset = v - v % 1 || (!isFinite(v) || v === 0 ? v : v < 0 ? -0 : 0);
-        }
-
-        return offset * 1000;
+        return serverTime - deviceTime;
     }
 
     function attemptSync(sources, sourceIndex) {
@@ -35252,8 +35459,8 @@ function TimeSyncController() {
 
                     setOffsetMs(offset);
 
-                    logger.debug('Local time: ' + new Date(deviceTime));
-                    logger.debug('Server time: ' + new Date(serverTime));
+                    logger.info('Local time: ' + new Date(deviceTime));
+                    logger.info('Server time: ' + new Date(serverTime));
                     logger.info('Server Time - Local Time (ms): ' + offset);
 
                     onComplete(serverTime, offset);
@@ -35299,7 +35506,7 @@ _coreFactoryMaker2['default'].updateSingletonFactory(TimeSyncController.__dashjs
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"157":157,"162":162,"182":182,"42":42,"43":43,"44":44,"46":46,"49":49,"97":97}],111:[function(_dereq_,module,exports){
+},{"160":160,"165":165,"185":185,"45":45,"46":46,"47":47,"49":49,"52":52,"99":99}],113:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -35338,19 +35545,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _XlinkLoader = _dereq_(96);
+var _XlinkLoader = _dereq_(98);
 
 var _XlinkLoader2 = _interopRequireDefault(_XlinkLoader);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -35358,11 +35565,11 @@ var _externalsXml2json = _dereq_(3);
 
 var _externalsXml2json2 = _interopRequireDefault(_externalsXml2json);
 
-var _utilsURLUtils = _dereq_(157);
+var _utilsURLUtils = _dereq_(160);
 
 var _utilsURLUtils2 = _interopRequireDefault(_utilsURLUtils);
 
-var _dashConstantsDashConstants = _dereq_(56);
+var _dashConstantsDashConstants = _dereq_(59);
 
 var _dashConstantsDashConstants2 = _interopRequireDefault(_dashConstantsDashConstants);
 
@@ -35629,7 +35836,7 @@ XlinkController.__dashjs_factory_name = 'XlinkController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(XlinkController);
 module.exports = exports['default'];
 
-},{"157":157,"3":3,"43":43,"44":44,"49":49,"56":56,"96":96}],112:[function(_dereq_,module,exports){
+},{"160":160,"3":3,"46":46,"47":47,"52":52,"59":59,"98":98}],114:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -35671,11 +35878,11 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
 
-var _utilsObjectUtils = _dereq_(154);
+var _utilsObjectUtils = _dereq_(156);
 
 var _utilsObjectUtils2 = _interopRequireDefault(_utilsObjectUtils);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -35822,7 +36029,7 @@ BaseURLTreeModel.__dashjs_factory_name = 'BaseURLTreeModel';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BaseURLTreeModel);
 module.exports = exports['default'];
 
-},{"154":154,"44":44}],113:[function(_dereq_,module,exports){
+},{"156":156,"47":47}],115:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -35862,23 +36069,23 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voFragmentRequest = _dereq_(164);
+var _voFragmentRequest = _dereq_(167);
 
 var _voFragmentRequest2 = _interopRequireDefault(_voFragmentRequest);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -35996,7 +36203,7 @@ function FragmentModel(config) {
     }
 
     function getRequestThreshold(req) {
-        return isNaN(req.duration) ? 0.25 : req.duration / 8;
+        return isNaN(req.duration) ? 0.25 : Math.min(req.duration / 8, 0.5);
     }
 
     function removeExecutedRequestsBeforeTime(time) {
@@ -36212,7 +36419,7 @@ _coreFactoryMaker2['default'].updateClassFactory(FragmentModel.__dashjs_factory_
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"164":164,"42":42,"43":43,"44":44,"49":49}],114:[function(_dereq_,module,exports){
+},{"167":167,"45":45,"46":46,"47":47,"52":52}],116:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -36251,15 +36458,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -36294,7 +36501,7 @@ ManifestModel.__dashjs_factory_name = 'ManifestModel';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(ManifestModel);
 module.exports = exports['default'];
 
-},{"43":43,"44":44,"49":49}],115:[function(_dereq_,module,exports){
+},{"46":46,"47":47,"52":52}],117:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -36335,20 +36542,26 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _dashVoUTCTiming = _dereq_(88);
+
+var _dashVoUTCTiming2 = _interopRequireDefault(_dashVoUTCTiming);
+
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var DEFAULT_UTC_TIMING_SOURCE = {
-    scheme: 'urn:mpeg:dash:utc:http-xsdate:2014',
-    value: 'http://time.akamai.com/?iso&ms'
-};
+var _rulesAbrABRRulesCollection = _dereq_(129);
+
+var _rulesAbrABRRulesCollection2 = _interopRequireDefault(_rulesAbrABRRulesCollection);
+
+var _utilsSupervisorTools = _dereq_(158);
+
 var LIVE_DELAY_FRAGMENT_COUNT = 4;
 
 var DEFAULT_LOCAL_STORAGE_BITRATE_EXPIRATION = 360000;
@@ -36381,9 +36594,12 @@ var MANIFEST_RETRY_INTERVAL = 500;
 var XLINK_RETRY_ATTEMPTS = 1;
 var XLINK_RETRY_INTERVAL = 500;
 
-var DEFAULT_LOW_LATENCY_LIVE_DELAY = 2.8;
+var DEFAULT_LOW_LATENCY_LIVE_DELAY = 3.0;
 var LOW_LATENCY_REDUCTION_FACTOR = 10;
 var LOW_LATENCY_MULTIPLY_FACTOR = 5;
+var LOW_LATENCY_CATCH_UP_MIN_DRIFT = 0.02;
+var LOW_LATENCY_CATCH_UP_MAX_DRIFT = 0;
+var LOW_LATENCY_CATCH_UP_PLAYBACK_RATE = 0.5;
 
 //This value influences the startup time for live (in ms).
 var WALLCLOCK_TIME_UPDATE_INTERVAL = 50;
@@ -36425,7 +36641,15 @@ function MediaPlayerModel() {
         smallGapLimit = undefined,
         lowLatencyEnabled = undefined,
         manifestUpdateRetryInterval = undefined,
-        keepProtectionMediaKeys = undefined;
+        keepProtectionMediaKeys = undefined,
+        liveCatchUpMinDrift = undefined,
+        liveCatchUpMaxDrift = undefined,
+        liveCatchUpPlaybackRate = undefined;
+
+    var DEFAULT_UTC_TIMING_SOURCE = {
+        scheme: 'urn:mpeg:dash:utc:http-xsdate:2014',
+        value: 'http://time.akamai.com/?iso&ms'
+    };
 
     function setup() {
         var _retryAttempts, _retryIntervals;
@@ -36467,6 +36691,9 @@ function MediaPlayerModel() {
         customABRRule = [];
         movingAverageMethod = _constantsConstants2['default'].MOVING_AVERAGE_SLIDING_WINDOW;
         lowLatencyEnabled = false;
+        liveCatchUpMinDrift = LOW_LATENCY_CATCH_UP_MIN_DRIFT;
+        liveCatchUpMaxDrift = LOW_LATENCY_CATCH_UP_MAX_DRIFT;
+        liveCatchUpPlaybackRate = LOW_LATENCY_CATCH_UP_PLAYBACK_RATE;
 
         retryAttempts = (_retryAttempts = {}, _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.MPD_TYPE, MANIFEST_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.XLINK_EXPANSION_TYPE, XLINK_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.MEDIA_SEGMENT_TYPE, FRAGMENT_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.INIT_SEGMENT_TYPE, FRAGMENT_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.BITSTREAM_SWITCHING_SEGMENT_TYPE, FRAGMENT_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.INDEX_SEGMENT_TYPE, FRAGMENT_RETRY_ATTEMPTS), _defineProperty(_retryAttempts, _voMetricsHTTPRequest.HTTPRequest.OTHER_TYPE, FRAGMENT_RETRY_ATTEMPTS), _retryAttempts);
 
@@ -36482,7 +36709,11 @@ function MediaPlayerModel() {
     //TODO Should we use Object.define to have setters/getters? makes more readable code on other side.
 
     function setABRStrategy(value) {
-        ABRStrategy = value;
+        if (value === _constantsConstants2['default'].ABR_STRATEGY_DYNAMIC || value === _constantsConstants2['default'].ABR_STRATEGY_BOLA || value === _constantsConstants2['default'].ABR_STRATEGY_THROUGHPUT) {
+            ABRStrategy = value;
+        } else {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
     }
 
     function getABRStrategy() {
@@ -36490,6 +36721,7 @@ function MediaPlayerModel() {
     }
 
     function setUseDefaultABRRules(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         useDefaultABRRules = value;
     }
 
@@ -36512,7 +36744,9 @@ function MediaPlayerModel() {
     }
 
     function addABRCustomRule(type, rulename, rule) {
-
+        if (typeof type !== 'string' || type !== _rulesAbrABRRulesCollection2['default'].ABANDON_FRAGMENT_RULES && type !== _rulesAbrABRRulesCollection2['default'].QUALITY_SWITCH_RULES || typeof rulename !== 'string') {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
         var index = findABRCustomRuleIndex(rulename);
         if (index === -1) {
             // add rule
@@ -36543,6 +36777,7 @@ function MediaPlayerModel() {
     }
 
     function setBandwidthSafetyFactor(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bandwidthSafetyFactor = value;
     }
 
@@ -36551,6 +36786,7 @@ function MediaPlayerModel() {
     }
 
     function setAbandonLoadTimeout(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         abandonLoadTimeout = value;
     }
 
@@ -36559,15 +36795,19 @@ function MediaPlayerModel() {
     }
 
     function setStableBufferTime(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         stableBufferTime = value;
     }
 
     function getStableBufferTime() {
-        var result = !isNaN(stableBufferTime) ? stableBufferTime : fastSwitchEnabled ? DEFAULT_MIN_BUFFER_TIME_FAST_SWITCH : DEFAULT_MIN_BUFFER_TIME;
-        return getLowLatencyEnabled() ? result / LOW_LATENCY_REDUCTION_FACTOR : result;
+        if (getLowLatencyEnabled()) {
+            return getLiveDelay() * 0.6;
+        }
+        return !isNaN(stableBufferTime) ? stableBufferTime : fastSwitchEnabled ? DEFAULT_MIN_BUFFER_TIME_FAST_SWITCH : DEFAULT_MIN_BUFFER_TIME;
     }
 
     function setBufferTimeAtTopQuality(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bufferTimeAtTopQuality = value;
     }
 
@@ -36576,6 +36816,7 @@ function MediaPlayerModel() {
     }
 
     function setBufferTimeAtTopQualityLongForm(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bufferTimeAtTopQualityLongForm = value;
     }
 
@@ -36584,6 +36825,7 @@ function MediaPlayerModel() {
     }
 
     function setLongFormContentDurationThreshold(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         longFormContentDurationThreshold = value;
     }
 
@@ -36592,6 +36834,7 @@ function MediaPlayerModel() {
     }
 
     function setSegmentOverlapToleranceTime(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         segmentOverlapToleranceTime = value;
     }
 
@@ -36600,6 +36843,8 @@ function MediaPlayerModel() {
     }
 
     function setCacheLoadThresholdForType(type, value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        (0, _utilsSupervisorTools.checkIsVideoOrAudioType)(type);
         cacheLoadThresholds[type] = value;
     }
 
@@ -36608,6 +36853,7 @@ function MediaPlayerModel() {
     }
 
     function setBufferToKeep(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bufferToKeep = value;
     }
 
@@ -36616,6 +36862,7 @@ function MediaPlayerModel() {
     }
 
     function setBufferAheadToKeep(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bufferAheadToKeep = value;
     }
 
@@ -36624,8 +36871,11 @@ function MediaPlayerModel() {
     }
 
     function setLastBitrateCachingInfo(enable, ttl) {
+        if (typeof enable !== 'boolean' || ttl !== undefined && (typeof ttl !== 'number' || isNaN(ttl))) {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
         lastBitrateCachingInfo.enabled = enable;
-        if (ttl !== undefined && !isNaN(ttl) && typeof ttl === 'number') {
+        if (ttl !== undefined) {
             lastBitrateCachingInfo.ttl = ttl;
         }
     }
@@ -36635,8 +36885,11 @@ function MediaPlayerModel() {
     }
 
     function setLastMediaSettingsCachingInfo(enable, ttl) {
+        if (typeof enable !== 'boolean' || ttl !== undefined && (typeof ttl !== 'number' || isNaN(ttl))) {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
         lastMediaSettingsCachingInfo.enabled = enable;
-        if (ttl !== undefined && !isNaN(ttl) && typeof ttl === 'number') {
+        if (ttl !== undefined) {
             lastMediaSettingsCachingInfo.ttl = ttl;
         }
     }
@@ -36646,6 +36899,7 @@ function MediaPlayerModel() {
     }
 
     function setBufferPruningInterval(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         bufferPruningInterval = value;
     }
 
@@ -36654,6 +36908,9 @@ function MediaPlayerModel() {
     }
 
     function setRetryAttemptsForType(type, value) {
+        if (typeof value !== 'number' || typeof type !== 'string' || type !== _voMetricsHTTPRequest.HTTPRequest.MPD_TYPE && type !== _voMetricsHTTPRequest.HTTPRequest.MEDIA_SEGMENT_TYPE) {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
         retryAttempts[type] = value;
     }
 
@@ -36662,6 +36919,7 @@ function MediaPlayerModel() {
     }
 
     function setRetryIntervalForType(type, value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         retryIntervals[type] = value;
     }
 
@@ -36670,6 +36928,7 @@ function MediaPlayerModel() {
     }
 
     function setWallclockTimeUpdateInterval(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         wallclockTimeUpdateInterval = value;
     }
 
@@ -36678,6 +36937,7 @@ function MediaPlayerModel() {
     }
 
     function setScheduleWhilePaused(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         scheduleWhilePaused = value;
     }
 
@@ -36686,6 +36946,7 @@ function MediaPlayerModel() {
     }
 
     function setLiveDelayFragmentCount(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         liveDelayFragmentCount = value;
     }
 
@@ -36694,6 +36955,10 @@ function MediaPlayerModel() {
     }
 
     function setLiveDelay(value) {
+        if (value !== undefined) {
+            // undefined is the default value...
+            (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        }
         liveDelay = value;
     }
 
@@ -36705,6 +36970,7 @@ function MediaPlayerModel() {
     }
 
     function setUseManifestDateHeaderTimeSource(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         useManifestDateHeaderTimeSource = value;
     }
 
@@ -36713,6 +36979,7 @@ function MediaPlayerModel() {
     }
 
     function setUseSuggestedPresentationDelay(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         useSuggestedPresentationDelay = value;
     }
 
@@ -36720,12 +36987,34 @@ function MediaPlayerModel() {
         return useSuggestedPresentationDelay;
     }
 
-    function setUTCTimingSources(value) {
-        UTCTimingSources = value;
+    function addUTCTimingSource(schemeIdUri, value) {
+        removeUTCTimingSource(schemeIdUri, value); //check if it already exists and remove if so.
+        var vo = new _dashVoUTCTiming2['default']();
+        vo.schemeIdUri = schemeIdUri;
+        vo.value = value;
+        UTCTimingSources.push(vo);
     }
 
     function getUTCTimingSources() {
         return UTCTimingSources;
+    }
+
+    function removeUTCTimingSource(schemeIdUri, value) {
+        (0, _utilsSupervisorTools.checkParameterType)(schemeIdUri, 'string');
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'string');
+        UTCTimingSources.forEach(function (obj, idx) {
+            if (obj.schemeIdUri === schemeIdUri && obj.value === value) {
+                UTCTimingSources.splice(idx, 1);
+            }
+        });
+    }
+
+    function clearDefaultUTCTimingSources() {
+        UTCTimingSources = [];
+    }
+
+    function restoreDefaultUTCTimingSources() {
+        addUTCTimingSource(DEFAULT_UTC_TIMING_SOURCE.scheme, DEFAULT_UTC_TIMING_SOURCE.value);
     }
 
     function setXHRWithCredentialsForType(type, value) {
@@ -36741,11 +37030,7 @@ function MediaPlayerModel() {
     function getXHRWithCredentialsForType(type) {
         var useCreds = xhrWithCredentials[type];
 
-        if (useCreds === undefined) {
-            return xhrWithCredentials['default'];
-        }
-
-        return useCreds;
+        return useCreds === undefined ? xhrWithCredentials['default'] : useCreds;
     }
 
     function getFastSwitchEnabled() {
@@ -36753,14 +37038,16 @@ function MediaPlayerModel() {
     }
 
     function setFastSwitchEnabled(value) {
-        if (typeof value !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         fastSwitchEnabled = value;
     }
 
     function setMovingAverageMethod(value) {
-        movingAverageMethod = value;
+        if (value === _constantsConstants2['default'].MOVING_AVERAGE_SLIDING_WINDOW || value === _constantsConstants2['default'].MOVING_AVERAGE_EWMA) {
+            movingAverageMethod = value;
+        } else {
+            throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+        }
     }
 
     function getMovingAverageMethod() {
@@ -36768,6 +37055,7 @@ function MediaPlayerModel() {
     }
 
     function setJumpGaps(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         jumpGaps = value;
     }
 
@@ -36776,6 +37064,7 @@ function MediaPlayerModel() {
     }
 
     function setSmallGapLimit(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         smallGapLimit = value;
     }
 
@@ -36788,13 +37077,41 @@ function MediaPlayerModel() {
     }
 
     function setLowLatencyEnabled(value) {
-        if (typeof value !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         lowLatencyEnabled = value;
     }
 
+    function setCatchUpPlaybackRate(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        (0, _utilsSupervisorTools.checkRange)(value, 0.0, 0.5);
+
+        liveCatchUpPlaybackRate = value;
+    }
+
+    function getCatchUpPlaybackRate() {
+        return liveCatchUpPlaybackRate;
+    }
+
+    function setLowLatencyMinDrift(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        liveCatchUpMinDrift = value;
+    }
+
+    function getLowLatencyMinDrift() {
+        return liveCatchUpMinDrift;
+    }
+
+    function setLowLatencyMaxDriftBeforeSeeking(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
+        liveCatchUpMaxDrift = value;
+    }
+
+    function getLowLatencyMaxDriftBeforeSeeking() {
+        return liveCatchUpMaxDrift;
+    }
+
     function setManifestUpdateRetryInterval(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'number');
         manifestUpdateRetryInterval = value;
     }
 
@@ -36803,11 +37120,16 @@ function MediaPlayerModel() {
     }
 
     function setKeepProtectionMediaKeys(value) {
+        (0, _utilsSupervisorTools.checkParameterType)(value, 'boolean');
         keepProtectionMediaKeys = value;
     }
 
     function getKeepProtectionMediaKeys() {
         return keepProtectionMediaKeys;
+    }
+
+    function getDefaultUtcTimingSource() {
+        return DEFAULT_UTC_TIMING_SOURCE;
     }
 
     function reset() {
@@ -36865,8 +37187,11 @@ function MediaPlayerModel() {
         setLiveDelay: setLiveDelay,
         setUseManifestDateHeaderTimeSource: setUseManifestDateHeaderTimeSource,
         getUseManifestDateHeaderTimeSource: getUseManifestDateHeaderTimeSource,
-        setUTCTimingSources: setUTCTimingSources,
+        addUTCTimingSource: addUTCTimingSource,
+        removeUTCTimingSource: removeUTCTimingSource,
         getUTCTimingSources: getUTCTimingSources,
+        clearDefaultUTCTimingSources: clearDefaultUTCTimingSources,
+        restoreDefaultUTCTimingSources: restoreDefaultUTCTimingSources,
         setXHRWithCredentialsForType: setXHRWithCredentialsForType,
         getXHRWithCredentialsForType: getXHRWithCredentialsForType,
         setFastSwitchEnabled: setFastSwitchEnabled,
@@ -36879,10 +37204,17 @@ function MediaPlayerModel() {
         getSmallGapLimit: getSmallGapLimit,
         getLowLatencyEnabled: getLowLatencyEnabled,
         setLowLatencyEnabled: setLowLatencyEnabled,
+        setCatchUpPlaybackRate: setCatchUpPlaybackRate,
+        getCatchUpPlaybackRate: getCatchUpPlaybackRate,
+        setLowLatencyMinDrift: setLowLatencyMinDrift,
+        getLowLatencyMinDrift: getLowLatencyMinDrift,
+        setLowLatencyMaxDriftBeforeSeeking: setLowLatencyMaxDriftBeforeSeeking,
+        getLowLatencyMaxDriftBeforeSeeking: getLowLatencyMaxDriftBeforeSeeking,
         setManifestUpdateRetryInterval: setManifestUpdateRetryInterval,
         getManifestUpdateRetryInterval: getManifestUpdateRetryInterval,
         setKeepProtectionMediaKeys: setKeepProtectionMediaKeys,
         getKeepProtectionMediaKeys: getKeepProtectionMediaKeys,
+        getDefaultUtcTimingSource: getDefaultUtcTimingSource,
         reset: reset
     };
 
@@ -36893,13 +37225,10 @@ function MediaPlayerModel() {
 
 //TODO see if you can move this and not export and just getter to get default value.
 MediaPlayerModel.__dashjs_factory_name = 'MediaPlayerModel';
-var factory = _coreFactoryMaker2['default'].getSingletonFactory(MediaPlayerModel);
-factory.DEFAULT_UTC_TIMING_SOURCE = DEFAULT_UTC_TIMING_SOURCE;
-_coreFactoryMaker2['default'].updateSingletonFactory(MediaPlayerModel.__dashjs_factory_name, factory);
-exports['default'] = factory;
+exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(MediaPlayerModel);
 module.exports = exports['default'];
 
-},{"182":182,"44":44,"97":97}],116:[function(_dereq_,module,exports){
+},{"129":129,"158":158,"185":185,"47":47,"88":88,"99":99}],118:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -36938,63 +37267,63 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _constantsMetricsConstants = _dereq_(98);
+var _constantsMetricsConstants = _dereq_(100);
 
 var _constantsMetricsConstants2 = _interopRequireDefault(_constantsMetricsConstants);
 
-var _voMetricsList = _dereq_(170);
+var _voMetricsList = _dereq_(173);
 
 var _voMetricsList2 = _interopRequireDefault(_voMetricsList);
 
-var _voMetricsTCPConnection = _dereq_(188);
+var _voMetricsTCPConnection = _dereq_(191);
 
 var _voMetricsTCPConnection2 = _interopRequireDefault(_voMetricsTCPConnection);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _voMetricsRepresentationSwitch = _dereq_(185);
+var _voMetricsRepresentationSwitch = _dereq_(188);
 
 var _voMetricsRepresentationSwitch2 = _interopRequireDefault(_voMetricsRepresentationSwitch);
 
-var _voMetricsBufferLevel = _dereq_(178);
+var _voMetricsBufferLevel = _dereq_(181);
 
 var _voMetricsBufferLevel2 = _interopRequireDefault(_voMetricsBufferLevel);
 
-var _voMetricsBufferState = _dereq_(179);
+var _voMetricsBufferState = _dereq_(182);
 
 var _voMetricsBufferState2 = _interopRequireDefault(_voMetricsBufferState);
 
-var _voMetricsDVRInfo = _dereq_(180);
+var _voMetricsDVRInfo = _dereq_(183);
 
 var _voMetricsDVRInfo2 = _interopRequireDefault(_voMetricsDVRInfo);
 
-var _voMetricsDroppedFrames = _dereq_(181);
+var _voMetricsDroppedFrames = _dereq_(184);
 
 var _voMetricsDroppedFrames2 = _interopRequireDefault(_voMetricsDroppedFrames);
 
-var _voMetricsManifestUpdate = _dereq_(183);
+var _voMetricsManifestUpdate = _dereq_(186);
 
-var _voMetricsSchedulingInfo = _dereq_(187);
+var _voMetricsSchedulingInfo = _dereq_(190);
 
 var _voMetricsSchedulingInfo2 = _interopRequireDefault(_voMetricsSchedulingInfo);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _voMetricsRequestsQueue = _dereq_(186);
+var _voMetricsRequestsQueue = _dereq_(189);
 
 var _voMetricsRequestsQueue2 = _interopRequireDefault(_voMetricsRequestsQueue);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -37006,7 +37335,6 @@ function MetricsModel() {
     var eventBus = (0, _coreEventBus2['default'])(context).getInstance();
 
     var instance = undefined,
-        adapter = undefined,
         streamMetrics = undefined;
 
     function setup() {
@@ -37015,10 +37343,6 @@ function MetricsModel() {
 
     function setConfig(config) {
         if (!config) return;
-
-        if (config.adapter) {
-            adapter = config.adapter;
-        }
     }
 
     function metricsChanged() {
@@ -37384,7 +37708,7 @@ MetricsModel.__dashjs_factory_name = 'MetricsModel';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(MetricsModel);
 module.exports = exports['default'];
 
-},{"170":170,"178":178,"179":179,"180":180,"181":181,"182":182,"183":183,"185":185,"186":186,"187":187,"188":188,"43":43,"44":44,"49":49,"97":97,"98":98}],117:[function(_dereq_,module,exports){
+},{"100":100,"173":173,"181":181,"182":182,"183":183,"184":184,"185":185,"186":186,"188":188,"189":189,"190":190,"191":191,"46":46,"47":47,"52":52,"99":99}],119:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -37424,11 +37748,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voURIFragmentData = _dereq_(177);
+var _voURIFragmentData = _dereq_(180);
 
 var _voURIFragmentData2 = _interopRequireDefault(_voURIFragmentData);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -37487,7 +37811,7 @@ URIFragmentModel.__dashjs_factory_name = 'URIFragmentModel';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(URIFragmentModel);
 module.exports = exports['default'];
 
-},{"177":177,"44":44}],118:[function(_dereq_,module,exports){
+},{"180":180,"47":47}],120:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -37527,19 +37851,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -37707,7 +38031,6 @@ function VideoModel() {
     }
 
     function addStalledStream(type) {
-
         var event = undefined;
 
         if (type === null || element.seeking || stalledStreams.indexOf(type) !== -1) {
@@ -37965,7 +38288,7 @@ VideoModel.__dashjs_factory_name = 'VideoModel';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(VideoModel);
 module.exports = exports['default'];
 
-},{"42":42,"43":43,"44":44,"49":49}],119:[function(_dereq_,module,exports){
+},{"45":45,"46":46,"47":47,"52":52}],121:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -38005,13 +38328,9 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
-
-var _utilsBoxParser = _dereq_(145);
-
-var _utilsBoxParser2 = _interopRequireDefault(_utilsBoxParser);
 
 /**
 * @module FetchLoader
@@ -38019,20 +38338,17 @@ var _utilsBoxParser2 = _interopRequireDefault(_utilsBoxParser);
 * @param {Object} cfg - dependencies from parent
 */
 function FetchLoader(cfg) {
+
     cfg = cfg || {};
     var requestModifier = cfg.requestModifier;
+    var boxParser = cfg.boxParser;
 
     var instance = undefined;
 
     function load(httpRequest) {
 
         // Variables will be used in the callback functions
-        var firstProgress = true; /*jshint ignore:line*/
-        var needFailureReport = true; /*jshint ignore:line*/
         var requestStartTime = new Date();
-        var lastTraceTime = requestStartTime; /*jshint ignore:line*/
-        var lastTraceReceivedCount = 0; /*jshint ignore:line*/
-
         var request = httpRequest.request;
 
         var headers = new Headers(); /*jshint ignore:line*/
@@ -38117,7 +38433,8 @@ function FetchLoader(cfg) {
                     httpRequest.response.response = buffer;
                     var event = {
                         loaded: buffer.byteLength,
-                        total: buffer.byteLength
+                        total: buffer.byteLength,
+                        stream: false
                     };
                     httpRequest.progress(event);
                     httpRequest.onload();
@@ -38148,7 +38465,8 @@ function FetchLoader(cfg) {
                             loaded: bytesReceived,
                             total: isNaN(totalBytes) ? bytesReceived : totalBytes,
                             lengthComputable: true,
-                            time: calculateDownloadedTime(downLoadedData, bytesReceived)
+                            time: calculateDownloadedTime(downLoadedData, bytesReceived),
+                            stream: true
                         });
 
                         httpRequest.response.response = remaining.buffer;
@@ -38166,7 +38484,7 @@ function FetchLoader(cfg) {
                         bytes: value.length
                     });
 
-                    var boxesInfo = (0, _utilsBoxParser2['default'])().getInstance().findLastTopIsoBoxCompleted(['moov', 'mdat'], remaining, offset);
+                    var boxesInfo = boxParser.findLastTopIsoBoxCompleted(['moov', 'mdat'], remaining, offset);
                     if (boxesInfo.found) {
                         var end = boxesInfo.lastCompletedOffset + boxesInfo.size;
 
@@ -38292,7 +38610,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(FetchLoader);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"145":145,"44":44}],120:[function(_dereq_,module,exports){
+},{"47":47}],122:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -38333,25 +38651,25 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
-var _XHRLoader = _dereq_(121);
+var _XHRLoader = _dereq_(123);
 
 var _XHRLoader2 = _interopRequireDefault(_XHRLoader);
 
-var _FetchLoader = _dereq_(119);
+var _FetchLoader = _dereq_(121);
 
 var _FetchLoader2 = _interopRequireDefault(_FetchLoader);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
@@ -38369,6 +38687,7 @@ function HTTPLoader(cfg) {
     var metricsModel = cfg.metricsModel;
     var mediaPlayerModel = cfg.mediaPlayerModel;
     var requestModifier = cfg.requestModifier;
+    var boxParser = cfg.boxParser;
     var useFetch = cfg.useFetch || false;
 
     var instance = undefined;
@@ -38432,7 +38751,7 @@ function HTTPLoader(cfg) {
                         internalLoad(config, remainingAttempts);
                     }, mediaPlayerModel.getRetryIntervalForType(request.type)));
                 } else {
-                    errHandler.downloadError(downloadErrorToRequestTypeMap[request.type], request.url, request, httpRequest.response);
+                    errHandler.downloadError(downloadErrorToRequestTypeMap[request.type], request.url, request);
 
                     errHandler.error(new _voDashJSError2['default'](newDownloadErrorToRequestTypeMap[request.type], request.url + ' is not available', { request: request, response: httpRequest.response }));
 
@@ -38501,11 +38820,13 @@ function HTTPLoader(cfg) {
         var loader = undefined;
         if (useFetch && window.fetch && request.responseType === 'arraybuffer') {
             loader = (0, _FetchLoader2['default'])(context).create({
-                requestModifier: requestModifier
+                requestModifier: requestModifier,
+                boxParser: boxParser
             });
         } else {
             loader = (0, _XHRLoader2['default'])(context).create({
-                requestModifier: requestModifier
+                requestModifier: requestModifier,
+                boxParser: boxParser
             });
         }
 
@@ -38611,7 +38932,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(HTTPLoader);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"119":119,"121":121,"162":162,"182":182,"44":44,"46":46}],121:[function(_dereq_,module,exports){
+},{"121":121,"123":123,"165":165,"185":185,"47":47,"49":49}],123:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -38650,7 +38971,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -38669,12 +38990,7 @@ function XHRLoader(cfg) {
     function load(httpRequest) {
 
         // Variables will be used in the callback functions
-        var firstProgress = true; /*jshint ignore:line*/
-        var needFailureReport = true; /*jshint ignore:line*/
         var requestStartTime = new Date();
-        var lastTraceTime = requestStartTime; /*jshint ignore:line*/
-        var lastTraceReceivedCount = 0; /*jshint ignore:line*/
-
         var request = httpRequest.request;
 
         var xhr = new XMLHttpRequest();
@@ -38729,7 +39045,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(XHRLoader);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44}],122:[function(_dereq_,module,exports){
+},{"47":47}],124:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -38738,7 +39054,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -38790,7 +39106,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(DroppedFramesHistory
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44}],123:[function(_dereq_,module,exports){
+},{"47":47}],125:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -38830,7 +39146,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -38908,7 +39224,7 @@ RulesContext.__dashjs_factory_name = 'RulesContext';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(RulesContext);
 module.exports = exports['default'];
 
-},{"44":44}],124:[function(_dereq_,module,exports){
+},{"47":47}],126:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -38948,7 +39264,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -38961,10 +39277,10 @@ var PRIORITY = {
 
 function SwitchRequest(q, r, p) {
     //TODO refactor all the calls to this to use config to be like everything else.
-    var instance = undefined;
-    var quality = undefined;
-    var priority = undefined;
-    var reason = undefined;
+    var instance = undefined,
+        quality = undefined,
+        priority = undefined,
+        reason = undefined;
 
     // check priority value
     function getPriority(p) {
@@ -39000,7 +39316,7 @@ _coreFactoryMaker2['default'].updateClassFactory(SwitchRequest.__dashjs_factory_
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"44":44}],125:[function(_dereq_,module,exports){
+},{"47":47}],127:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -39040,11 +39356,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
@@ -39106,7 +39422,7 @@ var factory = _coreFactoryMaker2['default'].getClassFactory(SwitchRequestHistory
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"124":124,"44":44}],126:[function(_dereq_,module,exports){
+},{"126":126,"47":47}],128:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -39146,11 +39462,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -39206,14 +39522,19 @@ function ThroughputHistory(config) {
 
         var latencyTimeInMilliseconds = httpRequest.tresponse.getTime() - httpRequest.trequest.getTime() || 1;
         var downloadTimeInMilliseconds = httpRequest._tfinish.getTime() - httpRequest.tresponse.getTime() || 1; //Make sure never 0 we divide by this value. Avoid infinity!
-        var downloadTime = httpRequest.trace.reduce(function (a, b) {
-            return a + b.d;
-        }, 0);
         var downloadBytes = httpRequest.trace.reduce(function (a, b) {
             return a + b.b[0];
         }, 0);
-        var throughputMeasureTime = useDeadTimeLatency ? downloadTimeInMilliseconds : latencyTimeInMilliseconds + downloadTimeInMilliseconds;
-        throughputMeasureTime = mediaPlayerModel.getLowLatencyEnabled() ? downloadTime : throughputMeasureTime;
+
+        var throughputMeasureTime = undefined;
+        if (mediaPlayerModel.getLowLatencyEnabled()) {
+            throughputMeasureTime = httpRequest.trace.reduce(function (a, b) {
+                return a + b.d;
+            }, 0);
+        } else {
+            throughputMeasureTime = useDeadTimeLatency ? downloadTimeInMilliseconds : latencyTimeInMilliseconds + downloadTimeInMilliseconds;
+        }
+
         var throughput = Math.round(8 * downloadBytes / throughputMeasureTime); // bits/ms = kbits/s
 
         checkSettingsForMediaType(mediaType);
@@ -39384,7 +39705,7 @@ ThroughputHistory.__dashjs_factory_name = 'ThroughputHistory';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ThroughputHistory);
 module.exports = exports['default'];
 
-},{"44":44,"97":97}],127:[function(_dereq_,module,exports){
+},{"47":47,"99":99}],129:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -39423,35 +39744,35 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _ThroughputRule = _dereq_(133);
+var _ThroughputRule = _dereq_(135);
 
 var _ThroughputRule2 = _interopRequireDefault(_ThroughputRule);
 
-var _InsufficientBufferRule = _dereq_(131);
+var _InsufficientBufferRule = _dereq_(133);
 
 var _InsufficientBufferRule2 = _interopRequireDefault(_InsufficientBufferRule);
 
-var _AbandonRequestsRule = _dereq_(128);
+var _AbandonRequestsRule = _dereq_(130);
 
 var _AbandonRequestsRule2 = _interopRequireDefault(_AbandonRequestsRule);
 
-var _DroppedFramesRule = _dereq_(130);
+var _DroppedFramesRule = _dereq_(132);
 
 var _DroppedFramesRule2 = _interopRequireDefault(_DroppedFramesRule);
 
-var _SwitchHistoryRule = _dereq_(132);
+var _SwitchHistoryRule = _dereq_(134);
 
 var _SwitchHistoryRule2 = _interopRequireDefault(_SwitchHistoryRule);
 
-var _BolaRule = _dereq_(129);
+var _BolaRule = _dereq_(131);
 
 var _BolaRule2 = _interopRequireDefault(_BolaRule);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
@@ -39612,7 +39933,7 @@ _coreFactoryMaker2['default'].updateSingletonFactory(ABRRulesCollection.__dashjs
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"124":124,"128":128,"129":129,"130":130,"131":131,"132":132,"133":133,"44":44}],128:[function(_dereq_,module,exports){
+},{"126":126,"130":130,"131":131,"132":132,"133":133,"134":134,"135":135,"47":47}],130:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -39651,15 +39972,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -39791,7 +40112,7 @@ AbandonRequestsRule.__dashjs_factory_name = 'AbandonRequestsRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(AbandonRequestsRule);
 module.exports = exports['default'];
 
-},{"124":124,"42":42,"44":44}],129:[function(_dereq_,module,exports){
+},{"126":126,"45":45,"47":47}],131:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -39833,29 +40154,29 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsMetricsConstants = _dereq_(98);
+var _constantsMetricsConstants = _dereq_(100);
 
 var _constantsMetricsConstants2 = _interopRequireDefault(_constantsMetricsConstants);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -40366,7 +40687,7 @@ BolaRule.__dashjs_factory_name = 'BolaRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BolaRule);
 module.exports = exports['default'];
 
-},{"124":124,"182":182,"42":42,"43":43,"44":44,"49":49,"98":98}],130:[function(_dereq_,module,exports){
+},{"100":100,"126":126,"185":185,"45":45,"46":46,"47":47,"52":52}],132:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -40375,15 +40696,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -40439,7 +40760,7 @@ DroppedFramesRule.__dashjs_factory_name = 'DroppedFramesRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(DroppedFramesRule);
 module.exports = exports['default'];
 
-},{"124":124,"42":42,"44":44}],131:[function(_dereq_,module,exports){
+},{"126":126,"45":45,"47":47}],133:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -40478,29 +40799,33 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _controllersBufferController = _dereq_(102);
+var _controllersBufferController = _dereq_(104);
 
 var _controllersBufferController2 = _interopRequireDefault(_controllersBufferController);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
 function InsufficientBufferRule(config) {
 
@@ -40525,7 +40850,7 @@ function InsufficientBufferRule(config) {
 
     function checkConfig() {
         if (!metricsModel || !metricsModel.hasOwnProperty('getReadOnlyMetricsFor') || !dashMetrics || !dashMetrics.hasOwnProperty('getCurrentBufferLevel')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
     /*
@@ -40559,7 +40884,7 @@ function InsufficientBufferRule(config) {
         }
 
         if (lastBufferStateVO.state === _controllersBufferController2['default'].BUFFER_EMPTY) {
-            logger.info('Switch to index 0; buffer is empty.');
+            logger.debug('Switch to index 0; buffer is empty.');
             switchRequest.quality = 0;
             switchRequest.reason = 'InsufficientBufferRule: Buffer is empty';
         } else {
@@ -40619,7 +40944,7 @@ InsufficientBufferRule.__dashjs_factory_name = 'InsufficientBufferRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(InsufficientBufferRule);
 module.exports = exports['default'];
 
-},{"102":102,"124":124,"42":42,"43":43,"44":44,"49":49}],132:[function(_dereq_,module,exports){
+},{"104":104,"126":126,"45":45,"46":46,"47":47,"52":52,"99":99}],134:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -40628,15 +40953,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
 
@@ -40675,7 +41000,7 @@ function SwitchHistoryRule() {
                 if (drops + noDrops >= SAMPLE_SIZE && drops / noDrops > MAX_SWITCH) {
                     switchRequest.quality = i > 0 && switchRequests[i].drops > 0 ? i - 1 : i;
                     switchRequest.reason = { index: switchRequest.quality, drops: drops, noDrops: noDrops, dropSize: dropSize };
-                    logger.info('Switch history rule index: ' + switchRequest.quality + ' samples: ' + (drops + noDrops) + ' drops: ' + drops);
+                    logger.debug('Switch history rule index: ' + switchRequest.quality + ' samples: ' + (drops + noDrops) + ' drops: ' + drops);
                     break;
                 }
             }
@@ -40697,7 +41022,7 @@ SwitchHistoryRule.__dashjs_factory_name = 'SwitchHistoryRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(SwitchHistoryRule);
 module.exports = exports['default'];
 
-},{"124":124,"42":42,"44":44}],133:[function(_dereq_,module,exports){
+},{"126":126,"45":45,"47":47}],135:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -40736,25 +41061,29 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _controllersBufferController = _dereq_(102);
+var _controllersBufferController = _dereq_(104);
 
 var _controllersBufferController2 = _interopRequireDefault(_controllersBufferController);
 
-var _controllersAbrController = _dereq_(99);
+var _controllersAbrController = _dereq_(101);
 
 var _controllersAbrController2 = _interopRequireDefault(_controllersAbrController);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _SwitchRequest = _dereq_(124);
+var _SwitchRequest = _dereq_(126);
 
 var _SwitchRequest2 = _interopRequireDefault(_SwitchRequest);
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
 function ThroughputRule(config) {
 
@@ -40771,7 +41100,7 @@ function ThroughputRule(config) {
 
     function checkConfig() {
         if (!metricsModel || !metricsModel.hasOwnProperty('getReadOnlyMetricsFor')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -40805,7 +41134,7 @@ function ThroughputRule(config) {
             if (bufferStateVO.state === _controllersBufferController2['default'].BUFFER_LOADED || isDynamic) {
                 switchRequest.quality = abrController.getQualityForBitrate(mediaInfo, throughput, latency);
                 scheduleController.setTimeToLoadDelay(0);
-                logger.info('requesting switch to index: ', switchRequest.quality, 'type: ', mediaType, 'Average throughput', Math.round(throughput), 'kbps');
+                logger.debug('requesting switch to index: ', switchRequest.quality, 'type: ', mediaType, 'Average throughput', Math.round(throughput), 'kbps');
                 switchRequest.reason = { throughput: throughput, latency: latency };
             }
         }
@@ -40831,7 +41160,7 @@ ThroughputRule.__dashjs_factory_name = 'ThroughputRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ThroughputRule);
 module.exports = exports['default'];
 
-},{"102":102,"124":124,"42":42,"44":44,"99":99}],134:[function(_dereq_,module,exports){
+},{"101":101,"104":104,"126":126,"45":45,"47":47,"99":99}],136:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -40870,11 +41199,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -40939,7 +41268,7 @@ BufferLevelRule.__dashjs_factory_name = 'BufferLevelRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BufferLevelRule);
 module.exports = exports['default'];
 
-},{"44":44,"97":97}],135:[function(_dereq_,module,exports){
+},{"47":47,"99":99}],137:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -40978,19 +41307,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _streamingVoFragmentRequest = _dereq_(164);
+var _streamingVoFragmentRequest = _dereq_(167);
 
 var _streamingVoFragmentRequest2 = _interopRequireDefault(_streamingVoFragmentRequest);
 
@@ -41019,7 +41348,7 @@ function NextFragmentRequestRule(config) {
         var seekTarget = scheduleController.getSeekTarget();
         var hasSeekTarget = !isNaN(seekTarget);
         var bufferController = streamProcessor.getBufferController();
-        var currentTime = streamProcessor.getPlaybackController().getTime();
+        var currentTime = streamProcessor.getPlaybackController().getNormalizedTime();
         var time = hasSeekTarget ? seekTarget : adapter.getIndexHandlerTime(streamProcessor);
         var bufferIsDivided = false;
         var request = undefined;
@@ -41093,7 +41422,7 @@ NextFragmentRequestRule.__dashjs_factory_name = 'NextFragmentRequestRule';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(NextFragmentRequestRule);
 module.exports = exports['default'];
 
-},{"164":164,"42":42,"44":44,"97":97}],136:[function(_dereq_,module,exports){
+},{"167":167,"45":45,"47":47,"99":99}],138:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -41132,7 +41461,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -41192,6 +41521,7 @@ function EmbeddedTextHtmlRender() {
     function ltrim(s) {
         return s.replace(/^\s+/g, '');
     }
+
     function rtrim(s) {
         return s.replace(/\s+$/g, '');
     }
@@ -41403,10 +41733,6 @@ function EmbeddedTextHtmlRender() {
                 cueID: cueID,
                 cellResolution: [32, 15],
                 isFromCEA608: true,
-                regions: regions,
-                regionID: region.name,
-                videoHeight: videoElement.videoHeight,
-                videoWidth: videoElement.videoWidth,
                 fontSize: fontSize,
                 lineHeight: {},
                 linePadding: {}
@@ -41425,7 +41751,7 @@ EmbeddedTextHtmlRender.__dashjs_factory_name = 'EmbeddedTextHtmlRender';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(EmbeddedTextHtmlRender);
 module.exports = exports['default'];
 
-},{"44":44}],137:[function(_dereq_,module,exports){
+},{"47":47}],139:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -41464,39 +41790,39 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _utilsInitCache = _dereq_(151);
+var _utilsInitCache = _dereq_(153);
 
 var _utilsInitCache2 = _interopRequireDefault(_utilsInitCache);
 
-var _SourceBufferSink = _dereq_(93);
+var _SourceBufferSink = _dereq_(95);
 
 var _SourceBufferSink2 = _interopRequireDefault(_SourceBufferSink);
 
-var _streamingTextTextController = _dereq_(139);
+var _streamingTextTextController = _dereq_(141);
 
 var _streamingTextTextController2 = _interopRequireDefault(_streamingTextTextController);
 
-var _streamingVoDashJSError = _dereq_(162);
+var _streamingVoDashJSError = _dereq_(165);
 
 var _streamingVoDashJSError2 = _interopRequireDefault(_streamingVoDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -41695,7 +42021,7 @@ NotFragmentedTextBufferController.__dashjs_factory_name = BUFFER_CONTROLLER_TYPE
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(NotFragmentedTextBufferController);
 module.exports = exports['default'];
 
-},{"139":139,"151":151,"162":162,"43":43,"44":44,"46":46,"49":49,"93":93,"97":97}],138:[function(_dereq_,module,exports){
+},{"141":141,"153":153,"165":165,"46":46,"47":47,"49":49,"52":52,"95":95,"99":99}],140:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -41734,19 +42060,19 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _controllersBufferController = _dereq_(102);
+var _controllersBufferController = _dereq_(104);
 
 var _controllersBufferController2 = _interopRequireDefault(_controllersBufferController);
 
-var _NotFragmentedTextBufferController = _dereq_(137);
+var _NotFragmentedTextBufferController = _dereq_(139);
 
 var _NotFragmentedTextBufferController2 = _interopRequireDefault(_NotFragmentedTextBufferController);
 
@@ -41901,7 +42227,7 @@ TextBufferController.__dashjs_factory_name = 'TextBufferController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(TextBufferController);
 module.exports = exports['default'];
 
-},{"102":102,"137":137,"44":44,"97":97}],139:[function(_dereq_,module,exports){
+},{"104":104,"139":139,"47":47,"99":99}],141:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -41940,37 +42266,39 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _TextSourceBuffer = _dereq_(140);
+var _TextSourceBuffer = _dereq_(142);
 
 var _TextSourceBuffer2 = _interopRequireDefault(_TextSourceBuffer);
 
-var _TextTracks = _dereq_(141);
+var _TextTracks = _dereq_(143);
 
 var _TextTracks2 = _interopRequireDefault(_TextTracks);
 
-var _utilsVTTParser = _dereq_(158);
+var _utilsVTTParser = _dereq_(161);
 
 var _utilsVTTParser2 = _interopRequireDefault(_utilsVTTParser);
 
-var _utilsTTMLParser = _dereq_(156);
+var _utilsTTMLParser = _dereq_(159);
 
 var _utilsTTMLParser2 = _interopRequireDefault(_utilsTTMLParser);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
+
+var _utilsSupervisorTools = _dereq_(158);
 
 function TextController() {
 
@@ -42073,10 +42401,7 @@ function TextController() {
     }
 
     function setTextDefaultLanguage(lang) {
-        if (typeof lang !== 'string') {
-            return;
-        }
-
+        (0, _utilsSupervisorTools.checkParameterType)(lang, 'string');
         defaultLanguage = lang;
     }
 
@@ -42112,9 +42437,7 @@ function TextController() {
     }
 
     function setTextDefaultEnabled(enable) {
-        if (typeof enable !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(enable, 'boolean');
         textDefaultEnabled = enable;
 
         if (!textDefaultEnabled) {
@@ -42128,9 +42451,7 @@ function TextController() {
     }
 
     function enableText(enable) {
-        if (typeof enable !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(enable, 'boolean');
 
         if (isTextEnabled() !== enable) {
             // change track selection
@@ -42157,9 +42478,7 @@ function TextController() {
 
     // when set to true NextFragmentRequestRule will allow schedule of chunks even if tracks are all disabled. Allowing streaming to hidden track for external players to work with.
     function enableForcedTextStreaming(enable) {
-        if (typeof enable !== 'boolean') {
-            return;
-        }
+        (0, _utilsSupervisorTools.checkParameterType)(enable, 'boolean');
         forceTextStreaming = enable;
     }
 
@@ -42271,7 +42590,7 @@ TextController.__dashjs_factory_name = 'TextController';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(TextController);
 module.exports = exports['default'];
 
-},{"140":140,"141":141,"156":156,"158":158,"43":43,"44":44,"49":49,"97":97}],140:[function(_dereq_,module,exports){
+},{"142":142,"143":143,"158":158,"159":159,"161":161,"46":46,"47":47,"52":52,"99":99}],142:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -42310,41 +42629,37 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _voMetricsHTTPRequest = _dereq_(182);
+var _voMetricsHTTPRequest = _dereq_(185);
 
-var _voTextTrackInfo = _dereq_(174);
+var _voTextTrackInfo = _dereq_(177);
 
 var _voTextTrackInfo2 = _interopRequireDefault(_voTextTrackInfo);
 
-var _dashUtilsFragmentedTextBoxParser = _dereq_(70);
-
-var _dashUtilsFragmentedTextBoxParser2 = _interopRequireDefault(_dashUtilsFragmentedTextBoxParser);
-
-var _utilsBoxParser = _dereq_(145);
+var _utilsBoxParser = _dereq_(147);
 
 var _utilsBoxParser2 = _interopRequireDefault(_utilsBoxParser);
 
-var _utilsCustomTimeRanges = _dereq_(147);
+var _utilsCustomTimeRanges = _dereq_(149);
 
 var _utilsCustomTimeRanges2 = _interopRequireDefault(_utilsCustomTimeRanges);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _TextTracks = _dereq_(141);
+var _TextTracks = _dereq_(143);
 
 var _TextTracks2 = _interopRequireDefault(_TextTracks);
 
-var _EmbeddedTextHtmlRender = _dereq_(136);
+var _EmbeddedTextHtmlRender = _dereq_(138);
 
 var _EmbeddedTextHtmlRender2 = _interopRequireDefault(_EmbeddedTextHtmlRender);
 
@@ -42356,19 +42671,19 @@ var _externalsCea608Parser = _dereq_(2);
 
 var _externalsCea608Parser2 = _interopRequireDefault(_externalsCea608Parser);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
@@ -42388,7 +42703,6 @@ function TextSourceBuffer() {
         parser = undefined,
         vttParser = undefined,
         ttmlParser = undefined,
-        fragmentedTextBoxParser = undefined,
         mediaInfos = undefined,
         textTracks = undefined,
         fragmentedFragmentModel = undefined,
@@ -42441,10 +42755,6 @@ function TextSourceBuffer() {
 
         if (!boxParser) {
             boxParser = (0, _utilsBoxParser2['default'])(context).getInstance();
-            fragmentedTextBoxParser = (0, _dashUtilsFragmentedTextBoxParser2['default'])(context).getInstance();
-            fragmentedTextBoxParser.setConfig({
-                boxParser: boxParser
-            });
         }
 
         addMediaInfos(mimeType, streamProcessor);
@@ -42476,7 +42786,6 @@ function TextSourceBuffer() {
 
     function abort() {
         textTracks.deleteAllTextTracks();
-        fragmentedTextBoxParser = null;
         boxParser = null;
         mediaInfos = [];
         fragmentedFragmentModel = null;
@@ -42508,10 +42817,6 @@ function TextSourceBuffer() {
         });
         textTracks.initialize();
         boxParser = (0, _utilsBoxParser2['default'])(context).getInstance();
-        fragmentedTextBoxParser = (0, _dashUtilsFragmentedTextBoxParser2['default'])(context).getInstance();
-        fragmentedTextBoxParser.setConfig({
-            boxParser: boxParser
-        });
         currFragmentedTrackIdx = null;
         embeddedInitializationSegmentReceived = false;
         embeddedTimescale = 0;
@@ -42664,9 +42969,9 @@ function TextSourceBuffer() {
         if (mediaType === _constantsConstants2['default'].FRAGMENTED_TEXT) {
             if (!initializationSegmentReceived) {
                 initializationSegmentReceived = true;
-                timescale = fragmentedTextBoxParser.getMediaTimescaleFromMoov(bytes);
+                timescale = boxParser.getMediaTimescaleFromMoov(bytes);
             } else {
-                samplesInfo = fragmentedTextBoxParser.getSamplesInfo(bytes);
+                samplesInfo = boxParser.getSamplesInfo(bytes);
                 sampleList = samplesInfo.sampleList;
                 if (firstFragmentedSubtitleStart === null && sampleList.length > 0) {
                     firstFragmentedSubtitleStart = sampleList[0].cts - chunk.start * timescale;
@@ -42759,7 +43064,7 @@ function TextSourceBuffer() {
             //embedded text
             if (chunk.segmentType === _voMetricsHTTPRequest.HTTPRequest.INIT_SEGMENT_TYPE) {
                 if (embeddedTimescale === 0) {
-                    embeddedTimescale = fragmentedTextBoxParser.getMediaTimescaleFromMoov(bytes);
+                    embeddedTimescale = boxParser.getMediaTimescaleFromMoov(bytes);
                     for (i = 0; i < embeddedTracks.length; i++) {
                         createTextTrackFromMediaInfo(null, embeddedTracks[i]);
                     }
@@ -42791,7 +43096,7 @@ function TextSourceBuffer() {
                     return newCue;
                 };
 
-                samplesInfo = fragmentedTextBoxParser.getSamplesInfo(bytes);
+                samplesInfo = boxParser.getSamplesInfo(bytes);
 
                 var sequenceNumber = samplesInfo.lastSequenceNumber;
 
@@ -42956,7 +43261,7 @@ TextSourceBuffer.__dashjs_factory_name = 'TextSourceBuffer';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(TextSourceBuffer);
 module.exports = exports['default'];
 
-},{"136":136,"141":141,"145":145,"147":147,"162":162,"174":174,"182":182,"2":2,"42":42,"43":43,"44":44,"46":46,"49":49,"5":5,"70":70,"97":97}],141:[function(_dereq_,module,exports){
+},{"138":138,"143":143,"147":147,"149":149,"165":165,"177":177,"185":185,"2":2,"45":45,"46":46,"47":47,"49":49,"5":5,"52":52,"99":99}],143:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -42995,27 +43300,27 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _imsc = _dereq_(38);
+var _imsc = _dereq_(40);
 
 function TextTracks() {
 
@@ -43646,7 +43951,7 @@ TextTracks.__dashjs_factory_name = 'TextTracks';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(TextTracks);
 module.exports = exports['default'];
 
-},{"38":38,"42":42,"43":43,"44":44,"49":49,"97":97}],142:[function(_dereq_,module,exports){
+},{"40":40,"45":45,"46":46,"47":47,"52":52,"99":99}],144:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -43686,34 +43991,34 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _voThumbnail = _dereq_(175);
+var _voThumbnail = _dereq_(178);
 
 var _voThumbnail2 = _interopRequireDefault(_voThumbnail);
 
-var _ThumbnailTracks = _dereq_(143);
+var _ThumbnailTracks = _dereq_(145);
 
 var _ThumbnailTracks2 = _interopRequireDefault(_ThumbnailTracks);
 
-var _voBitrateInfo = _dereq_(161);
+var _voBitrateInfo = _dereq_(164);
 
 var _voBitrateInfo2 = _interopRequireDefault(_voBitrateInfo);
 
-var _dashUtilsSegmentsUtils = _dereq_(74);
+var _dashUtilsSegmentsUtils = _dereq_(76);
 
 function ThumbnailController(config) {
 
     var context = this.context;
 
-    var instance = undefined;
-    var thumbnailTracks = undefined;
+    var instance = undefined,
+        thumbnailTracks = undefined;
 
     function setup() {
         reset();
@@ -43721,11 +44026,12 @@ function ThumbnailController(config) {
             dashManifestModel: config.dashManifestModel,
             adapter: config.adapter,
             baseURLController: config.baseURLController,
-            stream: config.stream
+            stream: config.stream,
+            timelineConverter: config.timelineConverter
         });
     }
 
-    function getThumbnail(time) {
+    function getThumbnail(time, callback) {
         var track = thumbnailTracks.getCurrentTrack();
         if (!track || track.segmentDuration <= 0 || time === undefined || time === null) {
             return null;
@@ -43737,13 +44043,22 @@ function ThumbnailController(config) {
         var thumbIndex = Math.floor(offset * track.tilesHor * track.tilesVert / track.segmentDuration);
         // Create and return the thumbnail
         var thumbnail = new _voThumbnail2['default']();
-        thumbnail.url = buildUrlFromTemplate(track, seq);
+
         thumbnail.width = Math.floor(track.widthPerTile);
         thumbnail.height = Math.floor(track.heightPerTile);
         thumbnail.x = Math.floor(thumbIndex % track.tilesHor) * track.widthPerTile;
         thumbnail.y = Math.floor(thumbIndex / track.tilesHor) * track.heightPerTile;
 
-        return thumbnail;
+        if ('readThumbnail' in track) {
+            return track.readThumbnail(time, function (url) {
+                thumbnail.url = url;
+                if (callback) callback(thumbnail);
+            });
+        } else {
+            thumbnail.url = buildUrlFromTemplate(track, seq);
+            if (callback) callback(thumbnail);
+            return thumbnail;
+        }
     }
 
     function buildUrlFromTemplate(track, seq) {
@@ -43800,7 +44115,7 @@ ThumbnailController.__dashjs_factory_name = 'ThumbnailController';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ThumbnailController);
 module.exports = exports['default'];
 
-},{"143":143,"161":161,"175":175,"44":44,"74":74,"97":97}],143:[function(_dereq_,module,exports){
+},{"145":145,"164":164,"178":178,"47":47,"76":76,"99":99}],145:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -43839,47 +44154,98 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _dashConstantsDashConstants = _dereq_(56);
+var _dashConstantsDashConstants = _dereq_(59);
 
 var _dashConstantsDashConstants2 = _interopRequireDefault(_dashConstantsDashConstants);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voThumbnailTrackInfo = _dereq_(176);
+var _voThumbnailTrackInfo = _dereq_(179);
 
 var _voThumbnailTrackInfo2 = _interopRequireDefault(_voThumbnailTrackInfo);
 
-var _streamingUtilsURLUtils = _dereq_(157);
+var _streamingUtilsURLUtils = _dereq_(160);
 
 var _streamingUtilsURLUtils2 = _interopRequireDefault(_streamingUtilsURLUtils);
 
-var _dashUtilsSegmentsUtils = _dereq_(74);
+var _dashUtilsSegmentsUtils = _dereq_(76);
+
+var _dashSegmentBaseLoader = _dereq_(57);
+
+var _dashSegmentBaseLoader2 = _interopRequireDefault(_dashSegmentBaseLoader);
+
+var _streamingUtilsBoxParser = _dereq_(147);
+
+var _streamingUtilsBoxParser2 = _interopRequireDefault(_streamingUtilsBoxParser);
+
+var _streamingNetXHRLoader = _dereq_(123);
+
+var _streamingNetXHRLoader2 = _interopRequireDefault(_streamingNetXHRLoader);
 
 var THUMBNAILS_SCHEME_ID_URIS = ['http://dashif.org/thumbnail_tile', 'http://dashif.org/guidelines/thumbnail_tile'];
 
 function ThumbnailTracks(config) {
-
     var context = this.context;
     var dashManifestModel = config.dashManifestModel;
     var adapter = config.adapter;
     var baseURLController = config.baseURLController;
     var stream = config.stream;
     var urlUtils = (0, _streamingUtilsURLUtils2['default'])(context).getInstance();
+
+    var loader = undefined,
+        segmentBaseLoader = undefined,
+        boxParser = undefined;
+    var timelineConverter = config.timelineConverter;
+    var metricsModel = config.metricsModel;
+    var mediaPlayerModel = config.mediaPlayerModel;
+    var errHandler = config.errHandler;
+
     var instance = undefined,
         tracks = undefined,
         currentTrackIndex = undefined;
 
     function initialize() {
         reset();
+        loader = (0, _streamingNetXHRLoader2['default'])(context).create({});
+        boxParser = (0, _streamingUtilsBoxParser2['default'])(context).getInstance();
+        segmentBaseLoader = (0, _dashSegmentBaseLoader2['default'])(context).getInstance();
+        segmentBaseLoader.setConfig({
+            baseURLController: baseURLController,
+            metricsModel: metricsModel,
+            mediaPlayerModel: mediaPlayerModel,
+            errHandler: errHandler
+        });
 
         // parse representation and create tracks
         addTracks();
+    }
+
+    function normalizeSegments(fragments, representation) {
+        var segments = [];
+        var count = 0;
+
+        var i = undefined,
+            len = undefined,
+            s = undefined,
+            seg = undefined;
+
+        for (i = 0, len = fragments.length; i < len; i++) {
+            s = fragments[i];
+
+            seg = (0, _dashUtilsSegmentsUtils.getTimeBasedSegment)(timelineConverter, dashManifestModel.getIsDynamic(), representation, s.startTime, s.duration, s.timescale, s.media, s.mediaRange, count);
+
+            segments.push(seg);
+
+            seg = null;
+            count++;
+        }
+        return segments;
     }
 
     function addTracks() {
@@ -43907,6 +44273,7 @@ function ThumbnailTracks(config) {
         if (voReps && voReps.length > 0) {
             voReps.forEach(function (rep) {
                 if (rep.segmentInfoType === _dashConstantsDashConstants2['default'].SEGMENT_TEMPLATE && rep.segmentDuration > 0 && rep.media) createTrack(rep);
+                if (rep.segmentInfoType === _dashConstantsDashConstants2['default'].SEGMENT_BASE) createTrack(rep, true);
             });
         }
 
@@ -43919,7 +44286,7 @@ function ThumbnailTracks(config) {
         }
     }
 
-    function createTrack(representation) {
+    function createTrack(representation, useSegmentBase) {
         var track = new _voThumbnailTrackInfo2['default']();
         track.id = representation.id;
         track.bitrate = representation.bandwidth;
@@ -43927,10 +44294,6 @@ function ThumbnailTracks(config) {
         track.height = representation.height;
         track.tilesHor = 1;
         track.tilesVert = 1;
-        track.startNumber = representation.startNumber;
-        track.segmentDuration = representation.segmentDuration;
-        track.timescale = representation.timescale;
-        track.templateUrl = buildTemplateUrl(representation);
 
         if (representation.essentialProperties) {
             representation.essentialProperties.forEach(function (p) {
@@ -43943,6 +44306,59 @@ function ThumbnailTracks(config) {
                 }
             });
         }
+
+        if (useSegmentBase) {
+            segmentBaseLoader.loadSegments(representation, _constantsConstants2['default'].IMAGE, representation.indexRange, {}, function (segments, representation) {
+                var cache = [];
+                segments = normalizeSegments(segments, representation);
+                track.segmentDuration = segments[0].duration; //assume all segments have the same duration
+                track.readThumbnail = function (time, callback) {
+
+                    var cached = null;
+                    cache.some(function (el) {
+                        if (el.start <= time && el.end > time) {
+                            cached = el.url;
+                            return true;
+                        }
+                    });
+                    if (cached) {
+                        callback(cached);
+                    } else {
+                        segments.some(function (ss) {
+                            if (ss.mediaStartTime <= time && ss.mediaStartTime + ss.duration > time) {
+                                var baseURL = baseURLController.resolve(representation.path);
+                                loader.load({
+                                    method: 'get',
+                                    url: baseURL.url,
+                                    request: {
+                                        range: ss.mediaRange,
+                                        responseType: 'arraybuffer'
+                                    },
+                                    onload: function onload(e) {
+                                        var info = boxParser.getSamplesInfo(e.target.response);
+                                        var blob = new Blob([e.target.response.slice(info.sampleList[0].offset, info.sampleList[0].offset + info.sampleList[0].size)], { type: 'image/jpeg' });
+                                        var imageUrl = window.URL.createObjectURL(blob);
+                                        cache.push({
+                                            start: ss.mediaStartTime,
+                                            end: ss.mediaStartTime + ss.duration,
+                                            url: imageUrl
+                                        });
+                                        if (callback) callback(imageUrl);
+                                    }
+                                });
+                                return true;
+                            }
+                        });
+                    }
+                };
+            });
+        } else {
+            track.startNumber = representation.startNumber;
+            track.segmentDuration = representation.segmentDuration;
+            track.timescale = representation.timescale;
+            track.templateUrl = buildTemplateUrl(representation);
+        }
+
         if (track.tilesHor > 0 && track.tilesVert > 0) {
             // Precalculate width and heigth per tile for perf reasons
             track.widthPerTile = track.width / track.tilesHor;
@@ -44010,7 +44426,7 @@ ThumbnailTracks.__dashjs_factory_name = 'ThumbnailTracks';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(ThumbnailTracks);
 module.exports = exports['default'];
 
-},{"157":157,"176":176,"44":44,"56":56,"74":74,"97":97}],144:[function(_dereq_,module,exports){
+},{"123":123,"147":147,"160":160,"179":179,"47":47,"57":57,"59":59,"76":76,"99":99}],146:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -44050,37 +44466,41 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreErrorsErrors = _dereq_(46);
+var _coreErrorsErrors = _dereq_(49);
 
 var _coreErrorsErrors2 = _interopRequireDefault(_coreErrorsErrors);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _controllersBlacklistController = _dereq_(101);
+var _controllersBlacklistController = _dereq_(103);
 
 var _controllersBlacklistController2 = _interopRequireDefault(_controllersBlacklistController);
 
-var _baseUrlResolutionDVBSelector = _dereq_(160);
+var _baseUrlResolutionDVBSelector = _dereq_(163);
 
 var _baseUrlResolutionDVBSelector2 = _interopRequireDefault(_baseUrlResolutionDVBSelector);
 
-var _baseUrlResolutionBasicSelector = _dereq_(159);
+var _baseUrlResolutionBasicSelector = _dereq_(162);
 
 var _baseUrlResolutionBasicSelector2 = _interopRequireDefault(_baseUrlResolutionBasicSelector);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _voDashJSError = _dereq_(162);
+var _voDashJSError = _dereq_(165);
 
 var _voDashJSError2 = _interopRequireDefault(_voDashJSError);
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
 function BaseURLSelector() {
 
@@ -44122,7 +44542,7 @@ function BaseURLSelector() {
 
     function checkConfig() {
         if (!dashManifestModel || !dashManifestModel.hasOwnProperty('getIsDVB')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -44186,7 +44606,7 @@ BaseURLSelector.__dashjs_factory_name = 'BaseURLSelector';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BaseURLSelector);
 module.exports = exports['default'];
 
-},{"101":101,"159":159,"160":160,"162":162,"43":43,"44":44,"46":46,"49":49}],145:[function(_dereq_,module,exports){
+},{"103":103,"162":162,"163":163,"165":165,"46":46,"47":47,"49":49,"52":52,"99":99}],147:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -44226,11 +44646,15 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _IsoFile = _dereq_(152);
+var _coreDebug = _dereq_(45);
+
+var _coreDebug2 = _interopRequireDefault(_coreDebug);
+
+var _IsoFile = _dereq_(154);
 
 var _IsoFile2 = _interopRequireDefault(_IsoFile);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -44238,14 +44662,19 @@ var _codemIsoboxer = _dereq_(5);
 
 var _codemIsoboxer2 = _interopRequireDefault(_codemIsoboxer);
 
-var _voIsoBoxSearchInfo = _dereq_(167);
+var _voIsoBoxSearchInfo = _dereq_(170);
 
 var _voIsoBoxSearchInfo2 = _interopRequireDefault(_voIsoBoxSearchInfo);
 
 function BoxParser() /*config*/{
 
-    var instance = undefined;
+    var logger = undefined,
+        instance = undefined;
     var context = this.context;
+
+    function setup() {
+        logger = (0, _coreDebug2['default'])(context).getInstance().getLogger(instance);
+    }
 
     /**
      * @param {ArrayBuffer} data
@@ -44315,6 +44744,108 @@ function BoxParser() /*config*/{
         return boxInfo;
     }
 
+    function getSamplesInfo(ab) {
+        if (!ab || ab.byteLength === 0) {
+            return { sampleList: [], lastSequenceNumber: NaN, totalDuration: NaN, numSequences: NaN };
+        }
+        var isoFile = parse(ab);
+        // zero or more moofs
+        var moofBoxes = isoFile.getBoxes('moof');
+        // exactly one mfhd per moof
+        var mfhdBoxes = isoFile.getBoxes('mfhd');
+
+        var sampleDuration = undefined,
+            sampleCompositionTimeOffset = undefined,
+            sampleCount = undefined,
+            sampleSize = undefined,
+            sampleDts = undefined,
+            sampleList = undefined,
+            sample = undefined,
+            i = undefined,
+            j = undefined,
+            k = undefined,
+            l = undefined,
+            m = undefined,
+            n = undefined,
+            dataOffset = undefined,
+            lastSequenceNumber = undefined,
+            numSequences = undefined,
+            totalDuration = undefined;
+
+        numSequences = isoFile.getBoxes('moof').length;
+        lastSequenceNumber = mfhdBoxes[mfhdBoxes.length - 1].sequence_number;
+        sampleCount = 0;
+
+        sampleList = [];
+        var subsIndex = -1;
+        var nextSubsSample = -1;
+        for (l = 0; l < moofBoxes.length; l++) {
+            var moofBox = moofBoxes[l];
+            // zero or more trafs per moof
+            var trafBoxes = moofBox.getChildBoxes('traf');
+            for (j = 0; j < trafBoxes.length; j++) {
+                var trafBox = trafBoxes[j];
+                // exactly one tfhd per traf
+                var tfhdBox = trafBox.getChildBox('tfhd');
+                // zero or one tfdt per traf
+                var tfdtBox = trafBox.getChildBox('tfdt');
+                sampleDts = tfdtBox.baseMediaDecodeTime;
+                // zero or more truns per traf
+                var trunBoxes = trafBox.getChildBoxes('trun');
+                // zero or more subs per traf
+                var subsBoxes = trafBox.getChildBoxes('subs');
+                for (k = 0; k < trunBoxes.length; k++) {
+                    var trunBox = trunBoxes[k];
+                    sampleCount = trunBox.sample_count;
+                    dataOffset = (tfhdBox.base_data_offset || 0) + (trunBox.data_offset || 0);
+
+                    for (i = 0; i < sampleCount; i++) {
+                        sample = trunBox.samples[i];
+                        sampleDuration = sample.sample_duration !== undefined ? sample.sample_duration : tfhdBox.default_sample_duration;
+                        sampleSize = sample.sample_size !== undefined ? sample.sample_size : tfhdBox.default_sample_size;
+                        sampleCompositionTimeOffset = sample.sample_composition_time_offset !== undefined ? sample.sample_composition_time_offset : 0;
+                        var sampleData = {
+                            'dts': sampleDts,
+                            'cts': sampleDts + sampleCompositionTimeOffset,
+                            'duration': sampleDuration,
+                            'offset': moofBox.offset + dataOffset,
+                            'size': sampleSize,
+                            'subSizes': [sampleSize]
+                        };
+                        if (subsBoxes) {
+                            for (m = 0; m < subsBoxes.length; m++) {
+                                var subsBox = subsBoxes[m];
+                                if (subsIndex < subsBox.entry_count - 1 && i > nextSubsSample) {
+                                    subsIndex++;
+                                    nextSubsSample += subsBox.entries[subsIndex].sample_delta;
+                                }
+                                if (i == nextSubsSample) {
+                                    sampleData.subSizes = [];
+                                    var entry = subsBox.entries[subsIndex];
+                                    for (n = 0; n < entry.subsample_count; n++) {
+                                        sampleData.subSizes.push(entry.subsamples[n].subsample_size);
+                                    }
+                                }
+                            }
+                        }
+                        sampleList.push(sampleData);
+                        dataOffset += sampleSize;
+                        sampleDts += sampleDuration;
+                    }
+                }
+                totalDuration = sampleDts - tfdtBox.baseMediaDecodeTime;
+            }
+        }
+        return { sampleList: sampleList, lastSequenceNumber: lastSequenceNumber, totalDuration: totalDuration, numSequences: numSequences };
+    }
+
+    function getMediaTimescaleFromMoov(ab) {
+        var isoFile = parse(ab);
+        var mdhdBox = isoFile ? isoFile.getBox('mdhd') : undefined;
+
+        return mdhdBox ? mdhdBox.timescale : NaN;
+    }
+
     function parseUint32(data, offset) {
         return data[offset + 3] >>> 0 | data[offset + 2] << 8 >>> 0 | data[offset + 1] << 16 >>> 0 | data[offset] << 24 >>> 0;
     }
@@ -44323,10 +44854,42 @@ function BoxParser() /*config*/{
         return String.fromCharCode(data[offset++]) + String.fromCharCode(data[offset++]) + String.fromCharCode(data[offset++]) + String.fromCharCode(data[offset]);
     }
 
+    function findInitRange(data) {
+        var initRange = null;
+        var start = undefined,
+            end = undefined;
+
+        var isoFile = parse(data);
+
+        if (!isoFile) {
+            return initRange;
+        }
+
+        var ftyp = isoFile.getBox('ftyp');
+        var moov = isoFile.getBox('moov');
+
+        logger.debug('Searching for initialization.');
+
+        if (moov && moov.isComplete) {
+            start = ftyp ? ftyp.offset : moov.offset;
+            end = moov.offset + moov.size - 1;
+            initRange = start + '-' + end;
+
+            logger.debug('Found the initialization.  Range: ' + initRange);
+        }
+
+        return initRange;
+    }
+
     instance = {
         parse: parse,
-        findLastTopIsoBoxCompleted: findLastTopIsoBoxCompleted
+        findLastTopIsoBoxCompleted: findLastTopIsoBoxCompleted,
+        getMediaTimescaleFromMoov: getMediaTimescaleFromMoov,
+        getSamplesInfo: getSamplesInfo,
+        findInitRange: findInitRange
     };
+
+    setup();
 
     return instance;
 }
@@ -44334,7 +44897,7 @@ BoxParser.__dashjs_factory_name = 'BoxParser';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(BoxParser);
 module.exports = exports['default'];
 
-},{"152":152,"167":167,"44":44,"5":5}],146:[function(_dereq_,module,exports){
+},{"154":154,"170":170,"45":45,"47":47,"5":5}],148:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -44373,7 +44936,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -44434,7 +44997,7 @@ Capabilities.__dashjs_factory_name = 'Capabilities';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(Capabilities);
 module.exports = exports['default'];
 
-},{"44":44}],147:[function(_dereq_,module,exports){
+},{"47":47}],149:[function(_dereq_,module,exports){
 /**
 * The copyright in this software is being made available under the BSD License,
 * included below. This software may be subject to other third party and contributor
@@ -44473,9 +45036,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
+
+var _utilsSupervisorTools = _dereq_(158);
 
 function CustomTimeRanges() /*config*/{
     var customTimeRangeArray = [];
@@ -44570,16 +45135,8 @@ function CustomTimeRanges() /*config*/{
         return false;
     }
 
-    function checkIndex(index) {
-        var isInt = index !== null && !isNaN(index) && index % 1 === 0;
-
-        if (!isInt) {
-            throw new Error('index argument is not an integer');
-        }
-    }
-
     function start(index) {
-        checkIndex(index);
+        (0, _utilsSupervisorTools.checkInteger)(index);
 
         if (index >= this.customTimeRangeArray.length || index < 0) {
             return NaN;
@@ -44589,7 +45146,7 @@ function CustomTimeRanges() /*config*/{
     }
 
     function end(index) {
-        checkIndex(index);
+        (0, _utilsSupervisorTools.checkInteger)(index);
 
         if (index >= this.customTimeRangeArray.length || index < 0) {
             return NaN;
@@ -44613,7 +45170,7 @@ CustomTimeRanges.__dashjs_factory_name = 'CustomTimeRanges';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(CustomTimeRanges);
 module.exports = exports['default'];
 
-},{"44":44}],148:[function(_dereq_,module,exports){
+},{"158":158,"47":47}],150:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -44652,13 +45209,17 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
 var legacyKeysAndReplacements = [{ oldKey: 'dashjs_vbitrate', newKey: 'dashjs_video_bitrate' }, { oldKey: 'dashjs_abitrate', newKey: 'dashjs_audio_bitrate' }, { oldKey: 'dashjs_vsettings', newKey: 'dashjs_video_settings' }, { oldKey: 'dashjs_asettings', newKey: 'dashjs_audio_settings' }];
 
@@ -44753,7 +45314,7 @@ function DOMStorage(config) {
 
     function checkConfig() {
         if (!mediaPlayerModel || !mediaPlayerModel.hasOwnProperty('getLastMediaSettingsCachingInfo')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -44844,7 +45405,7 @@ var factory = _coreFactoryMaker2['default'].getSingletonFactory(DOMStorage);
 exports['default'] = factory;
 module.exports = exports['default'];
 
-},{"42":42,"44":44}],149:[function(_dereq_,module,exports){
+},{"45":45,"47":47,"99":99}],151:[function(_dereq_,module,exports){
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
@@ -44853,7 +45414,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -45125,7 +45686,7 @@ EBMLParser.__dashjs_factory_name = 'EBMLParser';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(EBMLParser);
 module.exports = exports['default'];
 
-},{"44":44}],150:[function(_dereq_,module,exports){
+},{"47":47}],152:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45159,119 +45720,129 @@ module.exports = exports['default'];
 'use strict';
 
 Object.defineProperty(exports, '__esModule', {
-    value: true
+  value: true
 });
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
+/**
+ * @module ErrorHandler
+ */
 function ErrorHandler() {
 
-    var instance = undefined;
-    var context = this.context;
-    var eventBus = (0, _coreEventBus2['default'])(context).getInstance();
+  var instance = undefined;
+  var context = this.context;
+  var eventBus = (0, _coreEventBus2['default'])(context).getInstance();
 
-    /**
-     * @param {number} err  "mediasource"|"mediakeys"
-     * @deprecated
-     */
-    function capabilityError(err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'capability', event: err });
-    }
+  /**
+   * @param {number} err  "mediasource"|"mediakeys"
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function capabilityError(err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'capability', event: err });
+  }
 
-    /**
-     * @param {string} id "manifest"|"SIDX"|"content"|"initialization"|"xlink"
-     * @param {string} url ""
-     * @param {object} request {XMLHttpRequest instance}
-     * @param {object} response {XMLHttpRequest instance}
-     * @deprecated
-     */
-    function downloadError(id, url, request, response) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'download', event: { id: id, url: url, request: request, response: response } });
-    }
+  /**
+   * @param {string} id "manifest"|"SIDX"|"content"|"initialization"|"xlink"
+   * @param {string} url ""
+   * @param {object} request {XMLHttpRequest instance}
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function downloadError(id, url, request) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'download', event: { id: id, url: url, request: request } });
+  }
 
-    /**
-     * @param {string} message ""
-     * @param {string} id "parse"|"nostreams"
-     * @param {obj} manifest {parsed manifest}
-     * @param {obj} err
-     * @deprecated
-     */
-    function manifestError(message, id, manifest, err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'manifestError', event: { message: message, id: id, manifest: manifest, event: err } });
-    }
+  /**
+   * @param {string} message ""
+   * @param {string} id "parse"|"nostreams"
+   * @param {obj} manifest {parsed manifest}
+   * @param {obj} err
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function manifestError(message, id, manifest, err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'manifestError', event: { message: message, id: id, manifest: manifest, event: err } });
+  }
 
-    /**
-     * @param {string} message ''
-     * @param {string} id 'parse'
-     * @param {string} ccContent ''
-     * @deprecated
-     */
-    function timedTextError(message, id, ccContent) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'cc', event: { message: message, id: id, cc: ccContent } });
-    }
+  /**
+   * @param {string} message ''
+   * @param {string} id 'parse'
+   * @param {string} ccContent ''
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function timedTextError(message, id, ccContent) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'cc', event: { message: message, id: id, cc: ccContent } });
+  }
 
-    /**
-     * @param {string} err
-     * @deprecated
-     */
-    function mediaSourceError(err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'mediasource', event: err });
-    }
+  /**
+   * @param {string} err
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function mediaSourceError(err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'mediasource', event: err });
+  }
 
-    /**
-     * @param {string} err
-     * @deprecated
-     */
-    function mediaKeySessionError(err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'key_session', event: err });
-    }
+  /**
+   * @param {string} err
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function mediaKeySessionError(err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'key_session', event: err });
+  }
 
-    /**
-     * @param {string} err
-     * @deprecated
-     */
-    function mediaKeyMessageError(err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'key_message', event: err });
-    }
+  /**
+   * @param {string} err
+   * @memberof module:ErrorHandler
+   * @deprecated
+   */
+  function mediaKeyMessageError(err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: 'key_message', event: err });
+  }
 
-    /**
-     * @param {object} err DashJSError with code, message and data attributes
-     */
-    function error(err) {
-        eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: err });
-    }
+  /**
+   * @param {object} err DashJSError with code, message and data attributes
+   * @memberof module:ErrorHandler
+   */
+  function error(err) {
+    eventBus.trigger(_coreEventsEvents2['default'].ERROR, { error: err });
+  }
 
-    instance = {
-        capabilityError: capabilityError,
-        downloadError: downloadError,
-        manifestError: manifestError,
-        timedTextError: timedTextError,
-        mediaSourceError: mediaSourceError,
-        mediaKeySessionError: mediaKeySessionError,
-        mediaKeyMessageError: mediaKeyMessageError,
-        error: error
-    };
+  instance = {
+    capabilityError: capabilityError,
+    downloadError: downloadError,
+    manifestError: manifestError,
+    timedTextError: timedTextError,
+    mediaSourceError: mediaSourceError,
+    mediaKeySessionError: mediaKeySessionError,
+    mediaKeyMessageError: mediaKeyMessageError,
+    error: error
+  };
 
-    return instance;
+  return instance;
 }
 
 ErrorHandler.__dashjs_factory_name = 'ErrorHandler';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(ErrorHandler);
 module.exports = exports['default'];
 
-},{"43":43,"44":44,"49":49}],151:[function(_dereq_,module,exports){
+},{"46":46,"47":47,"52":52}],153:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45315,7 +45886,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -45356,7 +45927,7 @@ InitCache.__dashjs_factory_name = 'InitCache';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(InitCache);
 module.exports = exports['default'];
 
-},{"44":44}],152:[function(_dereq_,module,exports){
+},{"47":47}],154:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45396,11 +45967,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _voIsoBox = _dereq_(166);
+var _voIsoBox = _dereq_(169);
 
 var _voIsoBox2 = _interopRequireDefault(_voIsoBox);
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -45492,7 +46063,7 @@ IsoFile.__dashjs_factory_name = 'IsoFile';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(IsoFile);
 module.exports = exports['default'];
 
-},{"166":166,"44":44}],153:[function(_dereq_,module,exports){
+},{"169":169,"47":47}],155:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45531,9 +46102,13 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
 /**
  * @param {Object} config
@@ -45549,7 +46124,7 @@ function LiveEdgeFinder(config) {
 
     function checkConfig() {
         if (!timelineConverter || !timelineConverter.hasOwnProperty('getExpectedLiveEdge') || !streamProcessor || !streamProcessor.hasOwnProperty('getRepresentationInfo')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(_constantsConstants2['default'].MISSING_CONFIG_ERROR);
         }
     }
 
@@ -45581,7 +46156,7 @@ LiveEdgeFinder.__dashjs_factory_name = 'LiveEdgeFinder';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(LiveEdgeFinder);
 module.exports = exports['default'];
 
-},{"44":44}],154:[function(_dereq_,module,exports){
+},{"47":47,"99":99}],156:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45621,7 +46196,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -45660,7 +46235,7 @@ ObjectUtils.__dashjs_factory_name = 'ObjectUtils';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(ObjectUtils);
 module.exports = exports['default'];
 
-},{"44":44,"6":6}],155:[function(_dereq_,module,exports){
+},{"47":47,"6":6}],157:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45700,7 +46275,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -45728,7 +46303,80 @@ RequestModifier.__dashjs_factory_name = 'RequestModifier';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(RequestModifier);
 module.exports = exports['default'];
 
-},{"44":44}],156:[function(_dereq_,module,exports){
+},{"47":47}],158:[function(_dereq_,module,exports){
+/**
+ * The copyright in this software is being made available under the BSD License,
+ * included below. This software may be subject to other third party and contributor
+ * rights, including patent rights, and no such rights are granted under this license.
+ *
+ * Copyright (c) 2013, Dash Industry Forum.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *  * Redistributions of source code must retain the above copyright notice, this
+ *  list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright notice,
+ *  this list of conditions and the following disclaimer in the documentation and/or
+ *  other materials provided with the distribution.
+ *  * Neither the name of Dash Industry Forum nor the names of its
+ *  contributors may be used to endorse or promote products derived from this software
+ *  without specific prior written permission.
+ *
+ *  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
+ *  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ *  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ *  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ *  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
+ *  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+ *  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ *  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ *  POSSIBILITY OF SUCH DAMAGE.
+ */
+'use strict';
+
+Object.defineProperty(exports, '__esModule', {
+    value: true
+});
+exports.checkParameterType = checkParameterType;
+exports.checkInteger = checkInteger;
+exports.checkRange = checkRange;
+exports.checkIsVideoOrAudioType = checkIsVideoOrAudioType;
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
+
+var _constantsConstants = _dereq_(99);
+
+var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
+
+function checkParameterType(parameter, type) {
+    if (typeof parameter !== type) {
+        throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+    }
+}
+
+function checkInteger(parameter) {
+    var isInt = parameter !== null && !isNaN(parameter) && parameter % 1 === 0;
+
+    if (!isInt) {
+        throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR + ' : argument is not an integer';
+    }
+}
+
+function checkRange(parameter, min, max) {
+    if (parameter < min || parameter > max) {
+        throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR + ' : argument out of range';
+    }
+}
+
+function checkIsVideoOrAudioType(type) {
+    if (typeof type !== 'string' || type !== _constantsConstants2['default'].AUDIO && type !== _constantsConstants2['default'].VIDEO) {
+        throw _constantsConstants2['default'].BAD_ARGUMENT_ERROR;
+    }
+}
+
+},{"99":99}],159:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45767,23 +46415,23 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
-var _coreEventBus = _dereq_(43);
+var _coreEventBus = _dereq_(46);
 
 var _coreEventBus2 = _interopRequireDefault(_coreEventBus);
 
-var _coreEventsEvents = _dereq_(49);
+var _coreEventsEvents = _dereq_(52);
 
 var _coreEventsEvents2 = _interopRequireDefault(_coreEventsEvents);
 
-var _imsc = _dereq_(38);
+var _imsc = _dereq_(40);
 
 function TTMLParser() {
 
@@ -45818,12 +46466,11 @@ function TTMLParser() {
      * @param {Array} images - images array referenced by subs MP4 box
      */
     function parse(data, offsetTime, startTimeSegment, endTimeSegment, images) {
-        var i = undefined;
-
         var errorMsg = '';
         var captionArray = [];
         var startTime = undefined,
-            endTime = undefined;
+            endTime = undefined,
+            i = undefined;
 
         var content = {};
 
@@ -45919,7 +46566,7 @@ TTMLParser.__dashjs_factory_name = 'TTMLParser';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(TTMLParser);
 module.exports = exports['default'];
 
-},{"38":38,"42":42,"43":43,"44":44,"49":49}],157:[function(_dereq_,module,exports){
+},{"40":40,"45":45,"46":46,"47":47,"52":52}],160:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -45959,7 +46606,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -46199,7 +46846,7 @@ URLUtils.__dashjs_factory_name = 'URLUtils';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(URLUtils);
 module.exports = exports['default'];
 
-},{"44":44}],158:[function(_dereq_,module,exports){
+},{"47":47}],161:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46238,11 +46885,11 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
-var _coreDebug = _dereq_(42);
+var _coreDebug = _dereq_(45);
 
 var _coreDebug2 = _interopRequireDefault(_coreDebug);
 
@@ -46409,7 +47056,7 @@ VTTParser.__dashjs_factory_name = 'VTTParser';
 exports['default'] = _coreFactoryMaker2['default'].getSingletonFactory(VTTParser);
 module.exports = exports['default'];
 
-},{"42":42,"44":44}],159:[function(_dereq_,module,exports){
+},{"45":45,"47":47}],162:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46449,7 +47096,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -46486,7 +47133,7 @@ BasicSelector.__dashjs_factory_name = 'BasicSelector';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(BasicSelector);
 module.exports = exports['default'];
 
-},{"44":44}],160:[function(_dereq_,module,exports){
+},{"47":47}],163:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46525,7 +47172,7 @@ Object.defineProperty(exports, '__esModule', {
 
 function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'default': obj }; }
 
-var _coreFactoryMaker = _dereq_(44);
+var _coreFactoryMaker = _dereq_(47);
 
 var _coreFactoryMaker2 = _interopRequireDefault(_coreFactoryMaker);
 
@@ -46639,7 +47286,7 @@ DVBSelector.__dashjs_factory_name = 'DVBSelector';
 exports['default'] = _coreFactoryMaker2['default'].getClassFactory(DVBSelector);
 module.exports = exports['default'];
 
-},{"44":44}],161:[function(_dereq_,module,exports){
+},{"47":47}],164:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46696,7 +47343,7 @@ var BitrateInfo = function BitrateInfo() {
 exports["default"] = BitrateInfo;
 module.exports = exports["default"];
 
-},{}],162:[function(_dereq_,module,exports){
+},{}],165:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46750,7 +47397,7 @@ var DashJSError = function DashJSError(code, message, data) {
 exports["default"] = DashJSError;
 module.exports = exports["default"];
 
-},{}],163:[function(_dereq_,module,exports){
+},{}],166:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46815,7 +47462,7 @@ function DataChunk() {
 exports["default"] = DataChunk;
 module.exports = exports["default"];
 
-},{}],164:[function(_dereq_,module,exports){
+},{}],167:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46892,7 +47539,7 @@ FragmentRequest.ACTION_COMPLETE = 'complete';
 exports['default'] = FragmentRequest;
 module.exports = exports['default'];
 
-},{}],165:[function(_dereq_,module,exports){
+},{}],168:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -46941,7 +47588,7 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _FragmentRequest2 = _dereq_(164);
+var _FragmentRequest2 = _dereq_(167);
 
 var _FragmentRequest3 = _interopRequireDefault(_FragmentRequest2);
 
@@ -46962,7 +47609,7 @@ var HeadRequest = (function (_FragmentRequest) {
 exports['default'] = HeadRequest;
 module.exports = exports['default'];
 
-},{"164":164}],166:[function(_dereq_,module,exports){
+},{"167":167}],169:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47121,7 +47768,7 @@ var IsoBox = (function () {
 exports['default'] = IsoBox;
 module.exports = exports['default'];
 
-},{}],167:[function(_dereq_,module,exports){
+},{}],170:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47175,7 +47822,7 @@ var IsoBoxSearchInfo = function IsoBoxSearchInfo(lastCompletedOffset, found, siz
 exports["default"] = IsoBoxSearchInfo;
 module.exports = exports["default"];
 
-},{}],168:[function(_dereq_,module,exports){
+},{}],171:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47233,7 +47880,7 @@ var ManifestInfo = function ManifestInfo() {
 exports["default"] = ManifestInfo;
 module.exports = exports["default"];
 
-},{}],169:[function(_dereq_,module,exports){
+},{}],172:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47300,7 +47947,7 @@ var MediaInfo = function MediaInfo() {
 exports["default"] = MediaInfo;
 module.exports = exports["default"];
 
-},{}],170:[function(_dereq_,module,exports){
+},{}],173:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47363,7 +48010,7 @@ var MetricsList = function MetricsList() {
 exports["default"] = MetricsList;
 module.exports = exports["default"];
 
-},{}],171:[function(_dereq_,module,exports){
+},{}],174:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47420,7 +48067,7 @@ var RepresentationInfo = function RepresentationInfo() {
 exports["default"] = RepresentationInfo;
 module.exports = exports["default"];
 
-},{}],172:[function(_dereq_,module,exports){
+},{}],175:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47477,7 +48124,7 @@ var StreamInfo = function StreamInfo() {
 exports["default"] = StreamInfo;
 module.exports = exports["default"];
 
-},{}],173:[function(_dereq_,module,exports){
+},{}],176:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47526,11 +48173,11 @@ function _classCallCheck(instance, Constructor) { if (!(instance instanceof Cons
 
 function _inherits(subClass, superClass) { if (typeof superClass !== 'function' && superClass !== null) { throw new TypeError('Super expression must either be null or a function, not ' + typeof superClass); } subClass.prototype = Object.create(superClass && superClass.prototype, { constructor: { value: subClass, enumerable: false, writable: true, configurable: true } }); if (superClass) Object.setPrototypeOf ? Object.setPrototypeOf(subClass, superClass) : subClass.__proto__ = superClass; }
 
-var _constantsConstants = _dereq_(97);
+var _constantsConstants = _dereq_(99);
 
 var _constantsConstants2 = _interopRequireDefault(_constantsConstants);
 
-var _FragmentRequest2 = _dereq_(164);
+var _FragmentRequest2 = _dereq_(167);
 
 var _FragmentRequest3 = _interopRequireDefault(_FragmentRequest2);
 
@@ -47553,7 +48200,7 @@ var TextRequest = (function (_FragmentRequest) {
 exports['default'] = TextRequest;
 module.exports = exports['default'];
 
-},{"164":164,"97":97}],174:[function(_dereq_,module,exports){
+},{"167":167,"99":99}],177:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47611,7 +48258,7 @@ var TextTrackInfo = function TextTrackInfo() {
 exports["default"] = TextTrackInfo;
 module.exports = exports["default"];
 
-},{}],175:[function(_dereq_,module,exports){
+},{}],178:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47667,7 +48314,7 @@ var Thumbnail = function Thumbnail() {
 exports["default"] = Thumbnail;
 module.exports = exports["default"];
 
-},{}],176:[function(_dereq_,module,exports){
+},{}],179:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47730,7 +48377,7 @@ var ThumbnailTrackInfo = function ThumbnailTrackInfo() {
 exports['default'] = ThumbnailTrackInfo;
 module.exports = exports['default'];
 
-},{}],177:[function(_dereq_,module,exports){
+},{}],180:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47803,7 +48450,7 @@ exports["default"] = URIFragmentData;
 */
 module.exports = exports["default"];
 
-},{}],178:[function(_dereq_,module,exports){
+},{}],181:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47870,7 +48517,7 @@ function BufferLevel() {
 exports["default"] = BufferLevel;
 module.exports = exports["default"];
 
-},{}],179:[function(_dereq_,module,exports){
+},{}],182:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -47911,7 +48558,7 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { 'd
 
 function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError('Cannot call a class as a function'); } }
 
-var _controllersBufferController = _dereq_(102);
+var _controllersBufferController = _dereq_(104);
 
 var _controllersBufferController2 = _interopRequireDefault(_controllersBufferController);
 
@@ -47941,7 +48588,7 @@ function BufferState() {
 exports['default'] = BufferState;
 module.exports = exports['default'];
 
-},{"102":102}],180:[function(_dereq_,module,exports){
+},{"104":104}],183:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48011,7 +48658,7 @@ function DVRInfo() {
 exports["default"] = DVRInfo;
 module.exports = exports["default"];
 
-},{}],181:[function(_dereq_,module,exports){
+},{}],184:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48075,7 +48722,7 @@ function DroppedFrames() {
 exports["default"] = DroppedFrames;
 module.exports = exports["default"];
 
-},{}],182:[function(_dereq_,module,exports){
+},{}],185:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48254,7 +48901,7 @@ HTTPRequest.OTHER_TYPE = 'other';
 exports.HTTPRequest = HTTPRequest;
 exports.HTTPRequestTrace = HTTPRequestTrace;
 
-},{}],183:[function(_dereq_,module,exports){
+},{}],186:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48452,7 +49099,7 @@ exports.ManifestUpdate = ManifestUpdate;
 exports.ManifestUpdateStreamInfo = ManifestUpdateStreamInfo;
 exports.ManifestUpdateRepresentationInfo = ManifestUpdateRepresentationInfo;
 
-},{}],184:[function(_dereq_,module,exports){
+},{}],187:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48612,7 +49259,7 @@ PlayListTrace.FAILURE_STOP_REASON = 'failure';
 exports.PlayList = PlayList;
 exports.PlayListTrace = PlayListTrace;
 
-},{}],185:[function(_dereq_,module,exports){
+},{}],188:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48692,7 +49339,7 @@ function RepresentationSwitch() {
 exports["default"] = RepresentationSwitch;
 module.exports = exports["default"];
 
-},{}],186:[function(_dereq_,module,exports){
+},{}],189:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48757,7 +49404,7 @@ function RequestsQueue() {
 exports["default"] = RequestsQueue;
 module.exports = exports["default"];
 
-},{}],187:[function(_dereq_,module,exports){
+},{}],190:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
@@ -48858,7 +49505,7 @@ function SchedulingInfo() {
 exports["default"] = SchedulingInfo;
 module.exports = exports["default"];
 
-},{}],188:[function(_dereq_,module,exports){
+},{}],191:[function(_dereq_,module,exports){
 /**
  * The copyright in this software is being made available under the BSD License,
  * included below. This software may be subject to other third party and contributor
