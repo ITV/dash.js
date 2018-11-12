@@ -163,7 +163,10 @@ function FragmentModel(config) {
     function removeExecutedRequestsAfterTime(time) {
         executedRequests = executedRequests.filter(req => {
             const threshold = getRequestThreshold(req);
-            return isNaN(req.startTime) || (time !== undefined ? req.startTime + req.duration < time + threshold : false);
+            console.log('ITV - removeExecutedRequestsBeforeTime - time:', time, ', req start time:',
+                        req.startTime, ', req duration:', req.duration);
+            console.log('ITV - threshold: ', threshold);
+            return isNaN(req.startTime) || (time !== undefined ? req.startTime + req.duration < time + 0 : false);
         });
     }
 
