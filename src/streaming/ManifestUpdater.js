@@ -32,14 +32,15 @@ import EventBus from '../core/EventBus';
 import Events from '../core/events/Events';
 import FactoryMaker from '../core/FactoryMaker';
 import Debug from '../core/Debug';
+import Errors from '../core/errors/Errors';
 
 function ManifestUpdater() {
 
     const context = this.context;
-    const log = Debug(context).getInstance().log;
     const eventBus = EventBus(context).getInstance();
 
     let instance,
+        logger,
         refreshDelay,
         refreshTimer,
         isPaused,
@@ -47,7 +48,12 @@ function ManifestUpdater() {
         manifestLoader,
         manifestModel,
         dashManifestModel,
+        errHandler,
         mediaPlayerModel;
+
+    function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
+    }
 
     function setConfig(config) {
         if (!config) return;
@@ -63,6 +69,9 @@ function ManifestUpdater() {
         }
         if (config.manifestLoader) {
             manifestLoader = config.manifestLoader;
+        }
+        if (config.errHandler) {
+            errHandler = config.errHandler;
         }
     }
 
@@ -103,11 +112,16 @@ function ManifestUpdater() {
         }
     }
 
-    function startManifestRefreshTimer() {
+    function startManifestRefreshTimer(delay) {
         stopManifestRefreshTimer();
-        if (!isNaN(refreshDelay)) {
-            log('Refresh manifest in ' + refreshDelay + ' seconds.');
-            refreshTimer = setTimeout(onRefreshTimer, refreshDelay * 1000);
+
+        if (isNaN(delay) && !isNaN(refreshDelay)) {
+            delay = refreshDelay * 1000;
+        }
+
+        if (!isNaN(delay)) {
+            logger.debug('Refresh manifest in ' + delay + ' milliseconds.');
+            refreshTimer = setTimeout(onRefreshTimer, delay);
         }
     }
 
@@ -129,9 +143,13 @@ function ManifestUpdater() {
         const date = new Date();
         const latencyOfLastUpdate = (date.getTime() - manifest.loadedTime.getTime()) / 1000;
         refreshDelay = dashManifestModel.getManifestUpdatePeriod(manifest, latencyOfLastUpdate);
-
+        // setTimeout uses a 32 bit number to store the delay. Any number greater than it
+        // will cause event associated with setTimeout to trigger immediately
+        if (refreshDelay * 1000 > 0x7FFFFFFF) {
+            refreshDelay = 0x7FFFFFFF / 1000;
+        }
         eventBus.trigger(Events.MANIFEST_UPDATED, {manifest: manifest});
-        log('Manifest has been refreshed at ' + date + '[' + date.getTime() / 1000 + '] ');
+        logger.info('Manifest has been refreshed at ' + date + '[' + date.getTime() / 1000 + '] ');
 
         if (!isPaused) {
             startManifestRefreshTimer();
@@ -139,13 +157,21 @@ function ManifestUpdater() {
     }
 
     function onRefreshTimer() {
-        if (isPaused && !mediaPlayerModel.getScheduleWhilePaused() || isUpdating) return;
+        if (isPaused && !mediaPlayerModel.getScheduleWhilePaused()) {
+            return;
+        }
+        if (isUpdating) {
+            startManifestRefreshTimer(mediaPlayerModel.getManifestUpdateRetryInterval());
+            return;
+        }
         refreshManifest();
     }
 
     function onManifestLoaded(e) {
         if (!e.error) {
             update(e.manifest);
+        } else if (e.error.code === Errors.MANIFEST_LOADER_PARSING_FAILURE_ERROR_CODE) {
+            errHandler.error(e.error);
         }
     }
 
@@ -172,6 +198,7 @@ function ManifestUpdater() {
         reset: reset
     };
 
+    setup();
     return instance;
 }
 ManifestUpdater.__dashjs_factory_name = 'ManifestUpdater';

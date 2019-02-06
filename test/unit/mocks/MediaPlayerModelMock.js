@@ -32,10 +32,11 @@ import {
     HTTPRequest
 }
 from '../../../src/streaming/vo/metrics/HTTPRequest';
+import Constants from '../../../src/streaming/constants/Constants';
 
 const DEFAULT_UTC_TIMING_SOURCE = {
     scheme: 'urn:mpeg:dash:utc:http-xsdate:2014',
-    value: 'http://time.akamai.com/?iso'
+    value: 'http://time.akamai.com/?iso&ms'
 };
 const LIVE_DELAY_FRAGMENT_COUNT = 4;
 
@@ -45,13 +46,14 @@ const DEFAULT_LOCAL_STORAGE_MEDIA_SETTINGS_EXPIRATION = 360000;
 const BANDWIDTH_SAFETY_FACTOR = 0.9;
 const ABANDON_LOAD_TIMEOUT = 10000;
 
-const BUFFER_TO_KEEP = 30;
-const BUFFER_PRUNING_INTERVAL = 30;
+const BUFFER_TO_KEEP = 20;
+const BUFFER_PRUNING_INTERVAL = 10;
 const DEFAULT_MIN_BUFFER_TIME = 12;
 const DEFAULT_MIN_BUFFER_TIME_FAST_SWITCH = 20;
 const BUFFER_TIME_AT_TOP_QUALITY = 30;
 const BUFFER_TIME_AT_TOP_QUALITY_LONG_FORM = 60;
 const LONG_FORM_CONTENT_DURATION_THRESHOLD = 600;
+const SEGMENT_OVERLAP_TOLERANCE_TIME = 0.05;
 
 const FRAGMENT_RETRY_ATTEMPTS = 3;
 const FRAGMENT_RETRY_INTERVAL = 1000;
@@ -66,6 +68,17 @@ const XLINK_RETRY_INTERVAL = 500;
 const WALLCLOCK_TIME_UPDATE_INTERVAL = 50;
 
 const DEFAULT_XHR_WITH_CREDENTIALS = false;
+
+const CACHE_LOAD_THRESHOLD_VIDEO = 50;
+const CACHE_LOAD_THRESHOLD_AUDIO = 5;
+
+const SMALL_GAP_LIMIT = 0.8;
+
+const MANIFEST_UPDATE_RETRY_INTERVAL = 100;
+
+const LOW_LATENCY_CATCH_UP_MIN_DRIFT = 0.02;
+
+const LOW_LATENCY_CATCH_UP_PLAYBACK_RATE = 0.5;
 
 class MediaPlayerModelMock {
 
@@ -134,6 +147,10 @@ class MediaPlayerModelMock {
         return MANIFEST_RETRY_INTERVAL;
     }
 
+    static get MANIFEST_UPDATE_RETRY_INTERVAL() {
+        return MANIFEST_UPDATE_RETRY_INTERVAL;
+    }
+
     static get XLINK_RETRY_ATTEMPTS() {
         return XLINK_RETRY_ATTEMPTS;
     }
@@ -145,8 +162,13 @@ class MediaPlayerModelMock {
     static get WALLCLOCK_TIME_UPDATE_INTERVAL() {
         return WALLCLOCK_TIME_UPDATE_INTERVAL;
     }
+
     static get DEFAULT_XHR_WITH_CREDENTIALS() {
         return DEFAULT_XHR_WITH_CREDENTIALS;
+    }
+
+    static get LOW_LATENCY_CATCH_UP_MIN_DRIFT() {
+        return LOW_LATENCY_CATCH_UP_MIN_DRIFT;
     }
 
     constructor() {
@@ -176,6 +198,7 @@ class MediaPlayerModelMock {
         this.bufferTimeAtTopQuality = BUFFER_TIME_AT_TOP_QUALITY;
         this.bufferTimeAtTopQualityLongForm = BUFFER_TIME_AT_TOP_QUALITY_LONG_FORM;
         this.longFormContentDurationThreshold = LONG_FORM_CONTENT_DURATION_THRESHOLD;
+        this.segmentOverlapToleranceTime = SEGMENT_OVERLAP_TOLERANCE_TIME;
         this.bandwidthSafetyFactor = BANDWIDTH_SAFETY_FACTOR;
         this.abandonLoadTimeout = ABANDON_LOAD_TIMEOUT;
         this.wallclockTimeUpdateInterval = WALLCLOCK_TIME_UPDATE_INTERVAL;
@@ -191,6 +214,16 @@ class MediaPlayerModelMock {
         this.retryIntervals = {
             [HTTPRequest.MPD_TYPE]: MANIFEST_RETRY_INTERVAL, [HTTPRequest.XLINK_EXPANSION_TYPE]: XLINK_RETRY_INTERVAL, [HTTPRequest.MEDIA_SEGMENT_TYPE]: FRAGMENT_RETRY_INTERVAL, [HTTPRequest.INIT_SEGMENT_TYPE]: FRAGMENT_RETRY_INTERVAL, [HTTPRequest.BITSTREAM_SWITCHING_SEGMENT_TYPE]: FRAGMENT_RETRY_INTERVAL, [HTTPRequest.INDEX_SEGMENT_TYPE]: FRAGMENT_RETRY_INTERVAL, [HTTPRequest.OTHER_TYPE]: FRAGMENT_RETRY_INTERVAL
         };
+
+        this.cacheLoadThresholds = {};
+        this.cacheLoadThresholds[Constants.VIDEO] = CACHE_LOAD_THRESHOLD_VIDEO;
+        this.cacheLoadThresholds[Constants.AUDIO] = CACHE_LOAD_THRESHOLD_AUDIO;
+        this.jumpGaps = false;
+        this.smallGapLimit = SMALL_GAP_LIMIT;
+        this.lowLatencyEnabled = false;
+        this.lowLatencyCatchUpPlaybackRate = LOW_LATENCY_CATCH_UP_PLAYBACK_RATE;
+        this.liveCatchUpMinDrift = LOW_LATENCY_CATCH_UP_MIN_DRIFT;
+        this.manifestUpdateRetryInterval = MANIFEST_UPDATE_RETRY_INTERVAL;
     }
 
     //TODO Should we use Object.define to have setters/getters? makes more readable code on other side.
@@ -203,7 +236,7 @@ class MediaPlayerModelMock {
         return this.useDefaultABRRules;
     }
 
-    findABRCustomRule(rulename) {
+    findABRCustomRuleIndex(rulename) {
         let i;
         for (i = 0; i < this.customABRRule.length; i++) {
             if (this.customABRRule[i].rulename === rulename) {
@@ -219,7 +252,7 @@ class MediaPlayerModelMock {
 
     addABRCustomRule(type, rulename, rule) {
 
-        let index = this.findABRCustomRule(rulename);
+        let index = this.findABRCustomRuleIndex(rulename);
         if (index === -1) {
             // add rule
             this.customABRRule.push({
@@ -235,15 +268,16 @@ class MediaPlayerModelMock {
     }
 
     removeABRCustomRule(rulename) {
-        let index = this.findABRCustomRule(rulename);
-        if (index !== -1) {
-            // remove rule
-            this.customABRRule.splice(index, 1);
+        if (rulename) {
+            let index = this.findABRCustomRuleIndex(rulename);
+            if (index !== -1) {
+                // remove rule
+                this.customABRRule.splice(index, 1);
+            }
+        } else {
+            //if no rulename is defined, remove all ABR custome rules
+            this.customABRRule = [];
         }
-    }
-
-    removeAllABRCustomRule() {
-        this.customABRRule = [];
     }
 
     setBandwidthSafetyFactor(value) {
@@ -294,6 +328,22 @@ class MediaPlayerModelMock {
         return this.longFormContentDurationThreshold;
     }
 
+    setSegmentOverlapToleranceTime(value) {
+        this.segmentOverlapToleranceTime = value;
+    }
+
+    getSegmentOverlapToleranceTime() {
+        return this.segmentOverlapToleranceTime;
+    }
+
+    setCacheLoadThresholdForType(type, value) {
+        this.cacheLoadThresholds[type] = value;
+    }
+
+    getCacheLoadThresholdForType(type) {
+        return this.cacheLoadThresholds[type];
+    }
+
     setBufferToKeep(value) {
         this.bufferToKeep = value;
     }
@@ -332,48 +382,16 @@ class MediaPlayerModelMock {
         return this.bufferPruningInterval;
     }
 
-    setFragmentRetryAttempts(value) {
-        this.retryAttempts[HTTPRequest.MEDIA_SEGMENT_TYPE] = value;
-    }
-
-    setManifestRetryAttempts(value) {
-        this.retryAttempts[HTTPRequest.MPD_TYPE] = value;
-    }
-
     setRetryAttemptsForType(type, value) {
         this.retryAttempts[type] = value;
-    }
-
-    getFragmentRetryAttempts() {
-        return this.retryAttempts[HTTPRequest.MEDIA_SEGMENT_TYPE];
-    }
-
-    getManifestRetryAttempts() {
-        return this.retryAttempts[HTTPRequest.MPD_TYPE];
     }
 
     getRetryAttemptsForType(type) {
         return this.retryAttempts[type];
     }
 
-    setFragmentRetryInterval(value) {
-        this.retryIntervals[HTTPRequest.MEDIA_SEGMENT_TYPE] = value;
-    }
-
-    setManifestRetryInterval(value) {
-        this.retryIntervals[HTTPRequest.MPD_TYPE] = value;
-    }
-
     setRetryIntervalForType(type, value) {
         this.retryIntervals[type] = value;
-    }
-
-    getFragmentRetryInterval() {
-        return this.retryIntervals[HTTPRequest.MEDIA_SEGMENT_TYPE];
-    }
-
-    getManifestRetryInterval() {
-        return this.retryIntervals[HTTPRequest.MPD_TYPE];
     }
 
     getRetryIntervalForType(type) {
@@ -432,8 +450,32 @@ class MediaPlayerModelMock {
         this.UTCTimingSources = value;
     }
 
+    addUTCTimingSource(schemeIdUri, value) {
+        this.removeUTCTimingSource(schemeIdUri, value); //check if it already exists and remove if so.
+        let vo = {};
+        vo.schemeIdUri = schemeIdUri;
+        vo.value = value;
+        this.UTCTimingSources.push(vo);
+    }
+
     getUTCTimingSources() {
         return this.UTCTimingSources;
+    }
+
+    removeUTCTimingSource(schemeIdUri, value) {
+        for (let i = 0; i < this.UTCTimingSources.length; i++) {
+            if (this.UTCTimingSources[i].schemeIdUri === schemeIdUri && this.UTCTimingSources[i].value === value) {
+                this.UTCTimingSources.splice(i, 1);
+            }
+        }
+    }
+
+    clearDefaultUTCTimingSources() {
+        this.UTCTimingSources = [];
+    }
+
+    restoreDefaultUTCTimingSources() {
+        this.addUTCTimingSource(DEFAULT_UTC_TIMING_SOURCE.scheme, DEFAULT_UTC_TIMING_SOURCE.value);
     }
 
     setXHRWithCredentialsForType(type, value) {
@@ -456,13 +498,60 @@ class MediaPlayerModelMock {
         return useCreds;
     }
 
-
     getFastSwitchEnabled() {
         return this.fastSwitchEnabled;
     }
 
     setFastSwitchEnabled(value) {
         this.fastSwitchEnabled = value;
+    }
+
+    setJumpGaps(value) {
+        this.jumpGaps = value;
+    }
+
+    getJumpGaps() {
+        return this.jumpGaps;
+    }
+
+    setManifestUpdateRetryInterval(value) {
+        this.manifestUpdateRetryInterval = value;
+    }
+
+    getManifestUpdateRetryInterval() {
+        return this.manifestUpdateRetryInterval;
+    }
+
+    setSmallGapLimit(value) {
+        this.smallGapLimit = value;
+    }
+
+    getSmallGapLimit() {
+        return this.smallGapLimit;
+    }
+
+    setLowLatencyEnabled(value) {
+        this.lowLatencyEnabled = value;
+    }
+
+    getLowLatencyEnabled() {
+        return this.lowLatencyEnabled;
+    }
+
+    setLowLatencyMinDrift(value) {
+        this.liveCatchUpMinDrift = value;
+    }
+
+    getLowLatencyMinDrift() {
+        return this.liveCatchUpMinDrift;
+    }
+
+    setCatchUpPlaybackRate(value) {
+        this.lowLatencyCatchUpPlaybackRate = value;
+    }
+
+    getCatchUpPlaybackRate() {
+        return this.lowLatencyCatchUpPlaybackRate;
     }
 
     reset() {

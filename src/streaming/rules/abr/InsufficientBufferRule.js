@@ -34,6 +34,7 @@ import Events from '../../../core/events/Events';
 import FactoryMaker from '../../../core/FactoryMaker';
 import Debug from '../../../core/Debug';
 import SwitchRequest from '../SwitchRequest';
+import Constants from '../../constants/Constants';
 
 function InsufficientBufferRule(config) {
 
@@ -41,23 +42,24 @@ function InsufficientBufferRule(config) {
     const INSUFFICIENT_BUFFER_SAFETY_FACTOR = 0.5;
 
     const context = this.context;
-    const log = Debug(context).getInstance().log;
 
     const eventBus = EventBus(context).getInstance();
     const metricsModel = config.metricsModel;
     const dashMetrics = config.dashMetrics;
 
     let instance,
+        logger,
         bufferStateDict;
 
     function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
         resetInitialSettings();
         eventBus.on(Events.PLAYBACK_SEEKING, onPlaybackSeeking, instance);
     }
 
     function checkConfig() {
         if (!metricsModel || !metricsModel.hasOwnProperty('getReadOnlyMetricsFor') || !dashMetrics || !dashMetrics.hasOwnProperty('getCurrentBufferLevel')) {
-            throw new Error('Missing config parameter(s)');
+            throw new Error(Constants.MISSING_CONFIG_ERROR);
         }
     }
     /*
@@ -91,7 +93,7 @@ function InsufficientBufferRule(config) {
         }
 
         if (lastBufferStateVO.state === BufferController.BUFFER_EMPTY) {
-            log('Switch to index 0; buffer is empty.');
+            logger.debug('Switch to index 0; buffer is empty.');
             switchRequest.quality = 0;
             switchRequest.reason = 'InsufficientBufferRule: Buffer is empty';
         } else {

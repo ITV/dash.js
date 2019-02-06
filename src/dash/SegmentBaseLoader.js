@@ -38,27 +38,32 @@ import FactoryMaker from '../core/FactoryMaker';
 import Debug from '../core/Debug';
 import {HTTPRequest} from '../streaming/vo/metrics/HTTPRequest';
 import FragmentRequest from '../streaming/vo/FragmentRequest';
-import XHRLoader from '../streaming/XHRLoader';
+import HTTPLoader from '../streaming/net/HTTPLoader';
+import Errors from '../core/errors/Errors';
 
 function SegmentBaseLoader() {
 
     const context = this.context;
-    const log = Debug(context).getInstance().log;
     const eventBus = EventBus(context).getInstance();
 
     let instance,
+        logger,
         errHandler,
         boxParser,
         requestModifier,
         metricsModel,
         mediaPlayerModel,
-        xhrLoader,
+        httpLoader,
         baseURLController;
+
+    function setup() {
+        logger = Debug(context).getInstance().getLogger(instance);
+    }
 
     function initialize() {
         boxParser = BoxParser(context).getInstance();
         requestModifier = RequestModifier(context).getInstance();
-        xhrLoader = XHRLoader(context).create({
+        httpLoader = HTTPLoader(context).create({
             errHandler: errHandler,
             metricsModel: metricsModel,
             mediaPlayerModel: mediaPlayerModel,
@@ -93,7 +98,6 @@ function SegmentBaseLoader() {
     function loadInitialization(representation, loadingInfo) {
         checkSetConfigCall();
         let initRange = null;
-        let isoFile = null;
         const baseUrl = baseURLController.resolve(representation.path);
         const info = loadingInfo || {
             init: true,
@@ -107,14 +111,13 @@ function SegmentBaseLoader() {
             bytesToLoad: 1500
         };
 
-        log('Start searching for initialization.');
+        logger.debug('Start searching for initialization.');
 
         const request = getFragmentRequest(info);
 
         const onload = function (response) {
             info.bytesLoaded = info.range.end;
-            isoFile = boxParser.parse(response);
-            initRange = findInitRange(isoFile);
+            initRange = boxParser.findInitRange(response);
 
             if (initRange) {
                 representation.range = initRange;
@@ -132,9 +135,9 @@ function SegmentBaseLoader() {
             eventBus.trigger(Events.INITIALIZATION_LOADED, {representation: representation});
         };
 
-        xhrLoader.load({request: request, success: onload, error: onerror});
+        httpLoader.load({request: request, success: onload, error: onerror});
 
-        log('Perform init search: ' + info.url);
+        logger.debug('Perform init search: ' + info.url);
     }
 
     function loadSegments(representation, type, range, loadingInfo, callback) {
@@ -197,7 +200,7 @@ function SegmentBaseLoader() {
                 }
 
                 if (loadMultiSidx) {
-                    log('Initiate multiple SIDX load.');
+                    logger.debug('Initiate multiple SIDX load.');
                     info.range.end = info.range.start + sidx.size;
 
                     let j, len, ss, se, r;
@@ -226,7 +229,7 @@ function SegmentBaseLoader() {
                     }
 
                 } else {
-                    log('Parsing segments from SIDX.');
+                    logger.debug('Parsing segments from SIDX.');
                     segments = getSegmentsForSidx(sidx, info);
                     callback(segments, representation, type);
                 }
@@ -237,13 +240,13 @@ function SegmentBaseLoader() {
             callback(null, representation, type);
         };
 
-        xhrLoader.load({request: request, success: onload, error: onerror});
-        log('Perform SIDX load: ' + info.url);
+        httpLoader.load({request: request, success: onload, error: onerror});
+        logger.debug('Perform SIDX load: ' + info.url);
     }
 
     function reset() {
-        xhrLoader.abort();
-        xhrLoader = null;
+        httpLoader.abort();
+        httpLoader = null;
         errHandler = null;
         boxParser = null;
         requestModifier = null;
@@ -281,27 +284,6 @@ function SegmentBaseLoader() {
         return segments;
     }
 
-    function findInitRange(isoFile) {
-        const ftyp = isoFile.getBox('ftyp');
-        const moov = isoFile.getBox('moov');
-
-        let initRange = null;
-        let start,
-            end;
-
-        log('Searching for initialization.');
-
-        if (moov && moov.isComplete) {
-            start = ftyp ? ftyp.offset : moov.offset;
-            end = moov.offset + moov.size - 1;
-            initRange = start + '-' + end;
-
-            log('Found the initialization.  Range: ' + initRange);
-        }
-
-        return initRange;
-    }
-
     function getFragmentRequest(info) {
         if (!info.url) {
             return;
@@ -319,7 +301,7 @@ function SegmentBaseLoader() {
         if (segments) {
             eventBus.trigger(Events.SEGMENTS_LOADED, {segments: segments, representation: representation, mediaType: type});
         } else {
-            eventBus.trigger(Events.SEGMENTS_LOADED, {segments: null, representation: representation, mediaType: type, error: new DashJSError(null, 'error loading segments', null)});
+            eventBus.trigger(Events.SEGMENTS_LOADED, {segments: null, representation: representation, mediaType: type, error: new DashJSError(Errors.SEGMENT_BASE_LOADER_ERROR_CODE, Errors.SEGMENT_BASE_LOADER_ERROR_MESSAGE)});
         }
     }
 
@@ -330,6 +312,8 @@ function SegmentBaseLoader() {
         loadSegments: loadSegments,
         reset: reset
     };
+
+    setup();
 
     return instance;
 }

@@ -4,7 +4,7 @@
     <meta charset="utf-8"/>
     <title>Dash JavaScript Player</title>
     <meta name="description" content="" />
-    <link rel="icon" type="image/x-icon" href="http://dashif.org/wp-content/uploads/2014/12/dashif.ico" />
+    <link rel="icon" type="image/x-icon" href="https://dashif.org/wp-content/uploads/2014/12/dashif.ico" />
     <meta name="viewport" content="width=device-width, height=device-height, user-scalable=no">
 
     <link rel="stylesheet" href="app/lib/bootstrap/css/bootstrap.min.css">
@@ -71,6 +71,7 @@
               <a href="http://dashif.org/" target="_blank"><img class="image" src="app/img/if.png"/></a>
               <span id="big-title">Reference Client</span>
                 <span ng-bind="version"></span>
+                <span id="commit-info"><!-- commit-info --></span>
             </div>
 
             <!-- Using iframe to solve pre-flight request issue from GIT-->
@@ -112,7 +113,6 @@
                             </ul>
                         </li>
                     </ul>
-
                 </div>
                 <div id="mobile-streams" class="input-group-btn">
                     <button type="button" class="btn btn-primary" data-toggle="modal" href="#streamModal">
@@ -122,6 +122,7 @@
                 <input type="text" class="form-control" ng-model="selectedItem.url">
                 <span class="input-group-btn">
                     <button class="btn btn-default" ng-click="toggleOptionsGutter(!optionsGutter)" ng-cloak>{{getOptionsButtonLabel()}}</button>
+                    <button class="btn btn-default" type="button" ng-click="doStop()">Stop</button>
                     <button class="btn btn-primary" type="button" ng-click="doLoad()">Load</button>
                 </span>
             </div>
@@ -129,10 +130,20 @@
 
         <!-- OPTIONS MENU-->
         <div ng-cloak class="row options-wrapper" ng-class="{'options-show':optionsGutter, 'options-hide':!optionsGutter}">
-
             <div class="options-item">
                 <div class="options-item-title">Playback</div>
                 <div class="options-item-body">
+                    <label class="options-label">Playback Video quality:
+                        <div class="dropdown" data-toggle="tooltip" data-placement="left"
+                                title="Please select your video quality">
+                            <button class="btn btn-primary dropdown-toggle" type="button" id="menu1" data-toggle="dropdown">Set Video Quality
+                                <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu" role="menu" aria-labelledby="menu1">
+                                <li ng-repeat="bitrateInfo in videoQualities"><a ng-click="selectVideoQuality(bitrateInfo.qualityIndex)">{{bitrateInfo.qualityIndex + 1}}</a></li>
+                            </ul>
+                        </div>
+                    </label>
                     <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
                            title="Enables automatic startup of the media once the media is loaded">
                         <input type="checkbox" ng-model="autoPlaySelected" ng-change="toggleAutoPlay()" ng-checked="autoPlaySelected">
@@ -154,10 +165,25 @@
                         Allow Local Storage
                     </label>
                     <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
+                           title="Enables jump small gaps (discontinuities) in the media streams">
+                        <input type="checkbox" id="jumpGapsCB" ng-model="jumpGapsSelected" ng-change="toggleJumpGaps()" ng-checked="jumpGapsSelected">
+                        Jump Small Gaps
+                    </label>
+                    <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
+                           title="">
+                        <input type="checkbox" id="lowLatencyModeCB" ng-model="lowLatencyModeSelected" ng-change="togglelowLatencyMode()" ng-checked="lowLatencyModeSelected">
+                        Low Latency Mode
+                    </label>
+                    <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
                            title="Enables faster ABR switching (time to render). Only when the new quality is higher than the current.">
                         <input type="checkbox" id="fastSwitchCB" ng-model="fastSwitchSelected" ng-change="toggleFastSwitch()" ng-checked="fastSwitchSelected">
                         Fast Switching ABR
                     </label>
+                    <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
+                           title="Enables auto switch video quality using selected ABR strategy">
+                        <input type="checkbox" id="videoAutoSwitchCB" ng-model="videoAutoSwitchSelected" ng-change="toggleVideoAutoSwitch()" ng-checked="videoAutoSwitchSelected">
+                        Video Auto Switch
+                    </label>                    
                     <label data-toggle="tooltip" data-placement="right"
                            title="Dynamically switch between BOLA and Throughput strategies.">
                         <input  type="radio" id="abrDynamic" autocomplete="off" name="abrStrategy" checked="checked" ng-click="changeABRStrategy('abrDynamic')" >
@@ -194,16 +220,17 @@
                         </ul>
                     </div>
                     <p><label  class="options-label" >{{drmKeySystem}}</label></p>
-                    <div id="drmLicenseForm" >
+                    <div id="drmLicenseForm" ng-show="drmKeySystem">
                         <label class="options-label">License URL:</label>
                         <input type="text" class="form-control" placeholder="" ng-model="drmLicenseURL">
                     </div>
-                    <!--<button class="btn btn-primary license" type="button" ng-click="doLicenseFetch()">Pre-Fetch Licenses</button>-->
                 </div>
             </div>
             <div class="options-item">
                 <div class="options-item-title">Initial Settings</div>
                 <div class="options-item-body">
+                    <label class="options-label">Initial bitrate Video:</label>
+                    <input type="text" class="form-control" placeholder="value in kbps" ng-model="initialVideoBitrate">
                     <label class="options-label">Audio:</label>
                     <input type="text" class="form-control" placeholder="audio initial lang, e.g. 'en'" ng-model="initialSettings.audio">
                     <label class="options-label">Video:</label>
@@ -214,21 +241,74 @@
                         <input type="checkbox" id="enableTextAtLoading" ng-model="initialSettings.textEnabled">
                         Enable Text At Loading
                     </label>
+                    <label class="topcoat-checkbox" data-toggle="tooltip" data-placement="right"
+                           title="Force text streaming">
+                        <input type="checkbox" id="enableForceTextStreaming" ng-model="initialSettings.forceTextStreaming">
+                        Force Text Streaming
+                    </label>
 
                 </div>
             </div>
             <div class="options-item">
                 <div class="options-item-title">Track Switch Mode</div>
                 <div class="options-item-body">
+                    <label class="options-label">Audio:</label>
                     <label data-toggle="tooltip" data-placement="right"
                            title="When a track is switched, the portion of the buffer that contains old track data is cleared">
-                        <input  type="radio" id="always-replace" autocomplete="off" name="track-switch" checked="checked" ng-click="changeTrackSwitchMode('alwaysReplace', 'video')" >
+                        <input  type="radio" id="always-replace-audio" autocomplete="off" name="track-switch-audio" checked="checked" ng-click="changeTrackSwitchMode('alwaysReplace', 'audio')" >
                         always replace
                     </label>
-                    <label  data-toggle="tooltip" data-placement="right"
-                            title="When a track is switched, the portion of the buffer that contains old track data is NOT cleared">
-                        <input type="radio" id="never-replace" autocomplete="off" name="track-switch" ng-click="changeTrackSwitchMode('neverReplace', 'video')">
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="When a track is switched, the portion of the buffer that contains old track data is NOT cleared">
+                        <input type="radio" id="never-replace-audio" autocomplete="off" name="track-switch-audio" ng-click="changeTrackSwitchMode('neverReplace', 'audio')">
                         never replace
+                    </label>
+                    <label class="options-label">Video:</label>
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="When a track is switched, the portion of the buffer that contains old track data is cleared">
+                        <input  type="radio" id="always-replace-video" autocomplete="off" name="track-switch-video" checked="checked" ng-click="changeTrackSwitchMode('alwaysReplace', 'video')" >
+                        always replace
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="When a track is switched, the portion of the buffer that contains old track data is NOT cleared">
+                        <input type="radio" id="never-replace-video" autocomplete="off" name="track-switch-video" ng-click="changeTrackSwitchMode('neverReplace', 'video')">
+                        never replace
+                    </label>
+                </div>
+            </div>
+            <div class="options-item">
+                <div class="options-item-title">Debug</div>
+                <div class="options-item-body">
+                    <label class="options-label">Log Level:</label>
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="Don't write any log message in browser console">
+                        <input  type="radio" id="log-none" value="none" autocomplete="off" name="log-level" ng-click="setLogLevel()" >
+                        NONE
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="Sets log level of to LOG_LEVEL_FATAL">
+                           <input  type="radio" id="log-fatal" value="fatal" autocomplete="off" name="log-level" ng-click="setLogLevel()" >
+                        FATAL
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                           title="Sets log level of to LOG_LEVEL_ERROR">
+                           <input  type="radio" id="log-error" value="error" autocomplete="off" name="log-level" ng-click="setLogLevel()" >
+                        ERROR
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                            title="Sets log level of to LOG_LEVEL_WARNING">
+                           <input  type="radio" id="log-warning" value="warning" autocomplete="off" name="log-level" ng-click="setLogLevel()" >
+                        WARNING
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                            title="Sets log level of to LOG_LEVEL_INFO">
+                           <input  type="radio" id="log-info" value="info" autocomplete="off" name="log-level" checked="checked" ng-click="setLogLevel()" >
+                        INFO
+                    </label>
+                    <label data-toggle="tooltip" data-placement="right"
+                            title="Sets log level of to LOG_LEVEL_DEBUG">
+                           <input  type="radio" id="log-debug" value="debug" autocomplete="off" name="log-level" ng-click="setLogLevel()" >
+                        DEBUG
                     </label>
                 </div>
             </div>
@@ -264,12 +344,14 @@
                         </div>
                         <span id="videoDuration" class="duration-display">00:00:00</span>
                         <div class="seekContainer">
-                            <input type="range" id="seekbar" value="0" class="seekbar" min="0" step="0.01"/>
+                            <div id="seekbar" class="seekbar seekbar-complete">
+                                <div id="seekbar-buffer" class="seekbar seekbar-buffer"></div>
+                                <div id="seekbar-play" class="seekbar seekbar-play"></div>
+                            </div>
                         </div>
                         <div id="thumbnail-container" class="thumbnail-container">
-                            <div id="thumbnail-elem" class="thumbnail-elem">
-                                <div id="thumbnail-time-label" class="thumbnail-time-label"></div>
-                            </div>
+                            <div id="thumbnail-elem" class="thumbnail-elem"></div>
+                            <div id="thumbnail-time-label" class="thumbnail-time-label"></div>
                         </div>
                     </div>
                 </div>
@@ -288,10 +370,6 @@
                           Audio
                           </a>
                       </li>
-                      <!--<li><a href="#textStatsTab" role="tab" data-toggle="tab">-->
-                          <!--Text-->
-                          <!--</a>-->
-                      <!--</li>-->
                     </ul>
 
                     <!-- Tab panes -->
@@ -341,6 +419,11 @@
                                 <label class="text-primary" for="videoRatioCB" data-toggle="tooltip" data-placement="top"
                                   title="The minimum, average and maximum ratio of the segment playback time to total download time over the last 4 segments">Ratio (min|avg|max) :</label> {{videoRatio}}
                             </div>
+                            <div class="text-success" ng-show="isDynamic">
+                                <input id="liveLatencyCB" type="checkbox" ng-model="chartState.video.liveLatency.selected" ng-change="enableChartByName('liveLatency', 'video')" >
+                                <label class="text-primary" for="liveLatencyCB" data-toggle="tooltip" data-placement="top"
+                                  title="Difference between live time and current playback position in seconds. This latency estimate does not include the time taken by the encoder to encode the content">Live Latency:</label> {{videoLiveLatency}}
+                            </div>
                         </div>
                       </div>
                       <div class="tab-pane fade" id="audioStatsTab">
@@ -386,26 +469,36 @@
                                 <label class="text-primary" for="audioRatioCB" data-toggle="tooltip" data-placement="top"
                                   title="The minimum, average and maximum ratio of the segment playback time to total download time over the last 4 segments">Ratio (min|avg|max) :</label> {{audioRatio}}
                             </div>
+                            <div class="text-success">
+                                <input id="liveLatencyCB" type="checkbox" ng-model="chartState.audio.liveLatency.selected" ng-change="enableChartByName('liveLatency', 'audio')" >
+                                <label class="text-primary" for="liveLatencyCB" data-toggle="tooltip" data-placement="top"
+                                  title="Number of seconds of difference between the real live and the playing live">Live Latency:</label> {{audioLiveLatency}}
+                            </div>
                         </div>
                       </div>
-                      <!--<div class="tab-pane fade" id="textStatsTab">-->
-                        <!--<div class="panel-body panel-stats">-->
-                            <!--&lt;!&ndash; TEXT STATS ITEMS&ndash;&gt;-->
-                            <!--<p class="text-primary">-->
-                                <!--<span class="text-success" data-toggle="tooltip" data-placement="top" -->
-                                      <!--title="The length of the forward buffer, in seconds">-->
-                                    <!--<em>Language:</em> {{audioBufferLength}}-->
-                                <!--</span>-->
-                            <!--</p>-->
-                        <!--</div>-->
-                      <!--</div>-->
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- CHARTING -->
+        <!-- ERROR MODAL -->
+        <div class="modal fade" id="errorModal" tabindex="-1" role="dialog" aria-labelledby="errorModalLabel" aria-hidden="true">
+            <div class="modal-dialog" role="document">
+                <div class="modal-content">
+                    <div class="modal-header errorModalHeader">
+                        <h5 class="modal-title" id="errorModalLabel">Error {{errorType}}</h5>
+                    </div>
+                    <div class="modal-body">
+                        {{error}}
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    </div>
+                </div>
+            </div>
+      </div>
 
+        <!-- CHARTING -->
        <div class="chart-panel">
             <div class="chart-controls">
                 <div class="btn-group">

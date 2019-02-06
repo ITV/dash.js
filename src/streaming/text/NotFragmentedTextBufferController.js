@@ -33,6 +33,10 @@ import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
 import FactoryMaker from '../../core/FactoryMaker';
 import InitCache from '../utils/InitCache';
+import SourceBufferSink from '../SourceBufferSink';
+import TextController from '../../streaming/text/TextController';
+import DashJSError from '../../streaming/vo/DashJSError';
+import Errors from '../../core/errors/Errors';
 
 const BUFFER_CONTROLLER_TYPE = 'NotFragmentedTextBufferController';
 function NotFragmentedTextBufferController(config) {
@@ -40,10 +44,11 @@ function NotFragmentedTextBufferController(config) {
     config = config || {};
     let context = this.context;
     let eventBus = EventBus(context).getInstance();
+    const textController = TextController(context).getInstance();
 
-    let sourceBufferController = config.sourceBufferController;
     let errHandler = config.errHandler;
     let type = config.type;
+    let mimeType = config.mimeType;
     let streamProcessor = config.streamProcessor;
 
     let instance,
@@ -51,20 +56,15 @@ function NotFragmentedTextBufferController(config) {
         initialized,
         mediaSource,
         buffer,
-        seekStartTime,
-        representationController,
         initCache;
 
     function setup() {
-
         initialized = false;
         mediaSource = null;
-        buffer = null;
-        representationController = null;
         isBufferingCompleted = false;
 
-        eventBus.on(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
-        eventBus.on(Events.INIT_FRAGMENT_LOADED, onInitFragmentLoaded, this);
+        eventBus.on(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, instance);
+        eventBus.on(Events.INIT_FRAGMENT_LOADED, onInitFragmentLoaded, instance);
     }
 
     function getBufferControllerType() {
@@ -73,30 +73,37 @@ function NotFragmentedTextBufferController(config) {
 
     function initialize(source) {
         setMediaSource(source);
-        representationController = streamProcessor.getRepresentationController();
         initCache = InitCache(context).getInstance();
     }
 
     /**
      * @param {MediaInfo }mediaInfo
-     * @returns {Object} SourceBuffer object
      * @memberof BufferController#
      */
     function createBuffer(mediaInfo) {
         try {
-            buffer = sourceBufferController.createSourceBuffer(mediaSource, mediaInfo);
-
+            buffer = SourceBufferSink(context).create(mediaSource, mediaInfo);
             if (!initialized) {
-                if (buffer.hasOwnProperty(Constants.INITIALIZE)) {
-                    buffer.initialize(type, streamProcessor);
+                const textBuffer = buffer.getBuffer();
+                if (textBuffer.hasOwnProperty(Constants.INITIALIZE)) {
+                    textBuffer.initialize(mimeType, streamProcessor);
                 }
                 initialized = true;
             }
+            return buffer;
         } catch (e) {
-            errHandler.mediaSourceError('Error creating ' + type + ' source buffer.');
+            if ((mediaInfo.isText) || (mediaInfo.codec.indexOf('codecs="stpp') !== -1) || (mediaInfo.codec.indexOf('codecs="wvtt') !== -1)) {
+                try {
+                    buffer = textController.getTextSourceBuffer();
+                } catch (e) {
+                    errHandler.mediaSourceError('Error creating ' + type + ' source buffer.');
+                    errHandler.error(new DashJSError(Errors.MEDIASOURCE_TYPE_UNSUPPORTED_CODE, Errors.MEDIASOURCE_TYPE_UNSUPPORTED_MESSAGE + type + ' : ' + e.message));
+                }
+            } else {
+                errHandler.mediaSourceError('Error creating ' + type + ' source buffer.');
+                errHandler.error(new DashJSError(Errors.MEDIASOURCE_TYPE_UNSUPPORTED_CODE, Errors.MEDIASOURCE_TYPE_UNSUPPORTED_MESSAGE + type));
+            }
         }
-
-        return buffer;
     }
 
     function getType() {
@@ -105,10 +112,6 @@ function NotFragmentedTextBufferController(config) {
 
     function getBuffer() {
         return buffer;
-    }
-
-    function setBuffer(value) {
-        buffer = value;
     }
 
     function setMediaSource(value) {
@@ -123,12 +126,14 @@ function NotFragmentedTextBufferController(config) {
         return streamProcessor;
     }
 
-    function setSeekStartTime(value) {
-        seekStartTime = value;
+    function getIsPruningInProgress() {
+        return false;
     }
 
-    function getSeekStartTime() {
-        return seekStartTime;
+    function dischargePreBuffer() {
+    }
+
+    function setSeekStartTime() { //Unused - TODO Remove need for stub function
     }
 
     function getBufferLevel() {
@@ -140,13 +145,13 @@ function NotFragmentedTextBufferController(config) {
     }
 
     function reset(errored) {
+        eventBus.off(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, instance);
+        eventBus.off(Events.INIT_FRAGMENT_LOADED, onInitFragmentLoaded, instance);
 
-        eventBus.off(Events.DATA_UPDATE_COMPLETED, onDataUpdateCompleted, this);
-        eventBus.off(Events.INIT_FRAGMENT_LOADED, onInitFragmentLoaded, this);
-
-        if (!errored) {
-            sourceBufferController.abort(mediaSource, buffer);
-            sourceBufferController.removeSourceBuffer(mediaSource, buffer);
+        if (!errored && buffer) {
+            buffer.abort();
+            buffer.reset();
+            buffer = null;
         }
     }
 
@@ -155,28 +160,48 @@ function NotFragmentedTextBufferController(config) {
             return;
         }
 
-        eventBus.trigger(Events.TIMED_TEXT_REQUESTED, {
-            index: 0,
-            sender: e.sender
-        }); //TODO make index dynamic if referring to MP?
+        const chunk = initCache.extract(streamProcessor.getStreamInfo().id, e.sender.getCurrentRepresentation().id);
+
+        if (!chunk) {
+            eventBus.trigger(Events.TIMED_TEXT_REQUESTED, {
+                index: 0,
+                sender: e.sender
+            }); //TODO make index dynamic if referring to MP?
+        }
     }
 
     function onInitFragmentLoaded(e) {
         if (e.fragmentModel !== streamProcessor.getFragmentModel() || (!e.chunk.bytes)) {
             return;
         }
+
         initCache.save(e.chunk);
-        sourceBufferController.append(buffer, e.chunk);
+        buffer.append(e.chunk);
+
+        eventBus.trigger(Events.STREAM_COMPLETED, {
+            request: e.request,
+            fragmentModel: e.fragmentModel
+        });
     }
 
     function switchInitData(streamId, representationId) {
         const chunk = initCache.extract(streamId, representationId);
-        if (chunk) {
-            sourceBufferController.append(buffer, chunk);
-        } else {
-            eventBus.trigger(Events.INIT_REQUESTED, {
+
+        if (!chunk) {
+            eventBus.trigger(Events.TIMED_TEXT_REQUESTED, {
+                index: 0,
                 sender: instance
             });
+        }
+    }
+
+    function getRangeAt() {
+        return null;
+    }
+
+    function updateTimestampOffset(MSETimeOffset) {
+        if (buffer.timestampOffset !== MSETimeOffset && !isNaN(MSETimeOffset)) {
+            buffer.timestampOffset = MSETimeOffset;
         }
     }
 
@@ -187,15 +212,17 @@ function NotFragmentedTextBufferController(config) {
         getType: getType,
         getStreamProcessor: getStreamProcessor,
         setSeekStartTime: setSeekStartTime,
-        getSeekStartTime: getSeekStartTime,
         getBuffer: getBuffer,
-        setBuffer: setBuffer,
         getBufferLevel: getBufferLevel,
         setMediaSource: setMediaSource,
         getMediaSource: getMediaSource,
         getIsBufferingCompleted: getIsBufferingCompleted,
+        getIsPruningInProgress: getIsPruningInProgress,
+        dischargePreBuffer: dischargePreBuffer,
         switchInitData: switchInitData,
-        reset: reset
+        getRangeAt: getRangeAt,
+        reset: reset,
+        updateTimestampOffset: updateTimestampOffset
     };
 
     setup();

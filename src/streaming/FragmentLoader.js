@@ -28,16 +28,14 @@
  *  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  *  POSSIBILITY OF SUCH DAMAGE.
  */
-import XHRLoader from './XHRLoader';
+import HTTPLoader from './net/HTTPLoader';
 import HeadRequest from './vo/HeadRequest';
 import DashJSError from './vo/DashJSError';
 import EventBus from './../core/EventBus';
+import BoxParser from '../streaming/utils/BoxParser';
 import Events from './../core/events/Events';
+import Errors from './../core/errors/Errors';
 import FactoryMaker from '../core/FactoryMaker';
-
-const FRAGMENT_LOADER_ERROR_LOADING_FAILURE = 1;
-const FRAGMENT_LOADER_ERROR_NULL_REQUEST = 2;
-const FRAGMENT_LOADER_MESSAGE_NULL_REQUEST = 'request is null';
 
 function FragmentLoader(config) {
 
@@ -46,14 +44,17 @@ function FragmentLoader(config) {
     const eventBus = EventBus(context).getInstance();
 
     let instance,
-        xhrLoader;
+        httpLoader;
 
     function setup() {
-        xhrLoader = XHRLoader(context).create({
+        const boxParser = BoxParser(context).getInstance();
+        httpLoader = HTTPLoader(context).create({
             errHandler: config.errHandler,
             metricsModel: config.metricsModel,
             mediaPlayerModel: config.mediaPlayerModel,
-            requestModifier: config.requestModifier
+            requestModifier: config.requestModifier,
+            boxParser: boxParser,
+            useFetch: config.mediaPlayerModel.getLowLatencyEnabled()
         });
     }
 
@@ -70,7 +71,7 @@ function FragmentLoader(config) {
         if (request) {
             let headRequest = new HeadRequest(request.url);
 
-            xhrLoader.load({
+            httpLoader.load({
                 request: headRequest,
                 success: function () {
                     report(true);
@@ -95,28 +96,37 @@ function FragmentLoader(config) {
         };
 
         if (request) {
-            xhrLoader.load({
+            httpLoader.load({
                 request: request,
-                progress: function () {
+                progress: function (event) {
                     eventBus.trigger(Events.LOADING_PROGRESS, {
-                        request: request
+                        request: request,
+                        stream: event.stream
                     });
+                    if (event.data) {
+                        eventBus.trigger(Events.LOADING_DATA_PROGRESS, {
+                            request: request,
+                            response: event.data || null,
+                            error: null,
+                            sender: instance
+                        });
+                    }
                 },
                 success: function (data) {
                     report(data);
                 },
-                error: function (xhr, statusText, errorText) {
+                error: function (request, statusText, errorText) {
                     report(
                         undefined,
                         new DashJSError(
-                            FRAGMENT_LOADER_ERROR_LOADING_FAILURE,
+                            Errors.FRAGMENT_LOADER_LOADING_FAILURE_ERROR_CODE,
                             errorText,
                             statusText
                         )
                     );
                 },
-                abort: function (request, status) {
-                    if (request && status === 0) {
+                abort: function (request) {
+                    if (request) {
                         eventBus.trigger(Events.LOADING_ABANDONED, {request: request, mediaType: request.mediaType, sender: instance});
                     }
                 }
@@ -125,23 +135,23 @@ function FragmentLoader(config) {
             report(
                 undefined,
                 new DashJSError(
-                    FRAGMENT_LOADER_ERROR_NULL_REQUEST,
-                    FRAGMENT_LOADER_MESSAGE_NULL_REQUEST
+                    Errors.FRAGMENT_LOADER_NULL_REQUEST_ERROR_CODE,
+                    Errors.FRAGMENT_LOADER_NULL_REQUEST_ERROR_MESSAGE
                 )
             );
         }
     }
 
     function abort() {
-        if (xhrLoader) {
-            xhrLoader.abort();
+        if (httpLoader) {
+            httpLoader.abort();
         }
     }
 
     function reset() {
-        if (xhrLoader) {
-            xhrLoader.abort();
-            xhrLoader = null;
+        if (httpLoader) {
+            httpLoader.abort();
+            httpLoader = null;
         }
     }
 
@@ -158,9 +168,4 @@ function FragmentLoader(config) {
 }
 
 FragmentLoader.__dashjs_factory_name = 'FragmentLoader';
-
-const factory = FactoryMaker.getClassFactory(FragmentLoader);
-factory.FRAGMENT_LOADER_ERROR_LOADING_FAILURE = FRAGMENT_LOADER_ERROR_LOADING_FAILURE;
-factory.FRAGMENT_LOADER_ERROR_NULL_REQUEST = FRAGMENT_LOADER_ERROR_NULL_REQUEST;
-FactoryMaker.updateClassFactory(FragmentLoader.__dashjs_factory_name, factory);
-export default factory;
+export default FactoryMaker.getClassFactory(FragmentLoader);

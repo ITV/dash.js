@@ -40,10 +40,10 @@ const PRIORITY = {
 
 function SwitchRequest(q, r, p) {
     //TODO refactor all the calls to this to use config to be like everything else.
-    let instance;
-    let quality;
-    let priority;
-    let reason;
+    let instance,
+        quality,
+        priority,
+        reason;
 
     // check priority value
     function getPriority(p) {
@@ -71,7 +71,7 @@ function SwitchRequest(q, r, p) {
 }
 
 SwitchRequest.__dashjs_factory_name = 'SwitchRequest';
-let factory = FactoryMaker.getClassFactory(SwitchRequest);
+const factory = FactoryMaker.getClassFactory(SwitchRequest);
 factory.NO_CHANGE = NO_CHANGE;
 factory.PRIORITY = PRIORITY;
 FactoryMaker.updateClassFactory(SwitchRequest.__dashjs_factory_name, factory);

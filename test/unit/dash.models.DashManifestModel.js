@@ -1,21 +1,20 @@
 import DashManifestModel from '../../src/dash/models/DashManifestModel';
-import TimelineConverter from '../../src/dash/utils/TimelineConverter';
 import BaseURL from '../../src/dash/vo/BaseURL';
-import MpdHelper from './helpers/MPDHelper';
 
-import AdapterMock from './mocks/AdapterMock';
-import MediaControllerMock from './mocks/MediaControllerMock';
+import MpdHelper from './helpers/MPDHelper';
+import ObjectsHelper from './helpers/ObjectsHelper';
+
+import ErrorHandlerMock from './mocks/ErrorHandlerMock';
 
 const expect = require('chai').expect;
 
 const context = {};
-const adapterMock = new AdapterMock();
-const mediaControllerMock = new MediaControllerMock();
-const timelineConverter = TimelineConverter(context).getInstance();
+const objectsHelper = new ObjectsHelper();
+const errorHandlerMock = new ErrorHandlerMock();
+const timelineConverterMock = objectsHelper.getDummyTimelineConverter();
 const dashManifestModel = DashManifestModel(context).getInstance({
-    mediaController: mediaControllerMock,
-    timelineConverter: timelineConverter,
-    adapter: adapterMock
+    timelineConverter: timelineConverterMock,
+    errHandler: errorHandlerMock
 });
 
 const TEST_URL = 'http://www.example.com/';
@@ -96,14 +95,14 @@ describe('DashManifestModel', function () {
     });
 
     it('should return null when getAdaptationForId is called and id is undefined and periodIndex = 0', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0 } ] }] };
+        const manifest = { Period_asArray: [{ AdaptationSet_asArray: [{ id: 0 }] }] };
         const adaptation = dashManifestModel.getAdaptationForId(undefined, manifest, 0);
 
         expect(adaptation).to.be.null;    // jshint ignore:line
     });
 
     it('should return valid value when getAdaptationForId is called and id is 0 and periodIndex = 0', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0 } ] }] };
+        const manifest = { Period_asArray: [{ AdaptationSet_asArray: [{ id: 0 }] }] };
         const adaptation = dashManifestModel.getAdaptationForId(0, manifest, 0);
 
         expect(adaptation.id).to.equal(0); // jshint ignore:line
@@ -130,14 +129,14 @@ describe('DashManifestModel', function () {
     });
 
     it('should return null when getAdaptationForIndex is called and id is undefined and periodIndex = 0', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0 } ] }] };
+        const manifest = { Period_asArray: [{ AdaptationSet_asArray: [{ id: 0 }] }] };
         const adaptation = dashManifestModel.getAdaptationForIndex(undefined, manifest, 0);
 
         expect(adaptation).to.be.null;    // jshint ignore:line
     });
 
     it('should return valid value when getAdaptationForIndex is called and id is 0 and periodIndex = 0', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0 } ] }] };
+        const manifest = { Period_asArray: [{ AdaptationSet_asArray: [{ id: 0 }] }] };
         const adaptation = dashManifestModel.getAdaptationForIndex(0, manifest, 0);
 
         expect(adaptation.id).to.equal(0); // jshint ignore:line
@@ -180,37 +179,9 @@ describe('DashManifestModel', function () {
     });
 
     it('should return an empty array when getAdaptationsForType is called and type is undefined', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0 } ] }] };
+        const manifest = { Period_asArray: [{ AdaptationSet_asArray: [{ id: 0 }] }] };
 
         expect(dashManifestModel.getAdaptationsForType.bind(dashManifestModel, manifest, 0, undefined)).to.throw('type is not defined');
-    });
-
-    it('should return an empty array when getAdaptationForType is called and streamInfo is undefined', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: 0, mimeType: 'video' } ] }] };
-        const adaptation = dashManifestModel.getAdaptationForType(manifest, 0, 'video', undefined);
-
-        expect(adaptation.id).to.equal(0); // jshint ignore:line
-    });
-
-    it('should return the correct adaptation when getAdaptationForType is called', () => {
-        const manifest = { Period_asArray: [ { AdaptationSet_asArray: [ { id: undefined, mimeType: 'audio', lang: 'eng', Role_asArray: [{value: 'main'}] }, { id: undefined, mimeType: 'audio', lang: 'deu', Role_asArray: [{value: 'main'}] }] }]};
-
-        const streamInfo = {
-            id: 'id'
-        };
-
-        const track1 = {codec: 'audio/mp4;codecs="mp4a.40.2"', id: undefined, index: 0, isText: false, lang: 'eng',mimeType: 'audio/mp4', roles: ['main'], streamInfo: streamInfo};
-        const track2 = {codec: 'audio/mp4;codecs="mp4a.40.2"', id: undefined, index: 1, isText: false, lang: 'deu',mimeType: 'audio/mp4', roles: ['main'], streamInfo: streamInfo};
-
-        mediaControllerMock.addTrack(track1);
-        mediaControllerMock.addTrack(track2);
-        mediaControllerMock.setTrack(track2);
-
-        const adaptation = dashManifestModel.getAdaptationForType(manifest, 0, 'audio', streamInfo);
-
-        //in the mediaControllerMock, the currentTrack is lang= deu
-
-        expect(adaptation.lang).to.equal('deu'); // jshint ignore:line
     });
 
     it('should return null when getCodec is called and adaptation is undefined', () => {
@@ -226,7 +197,13 @@ describe('DashManifestModel', function () {
     });
 
     it('should return null when getCodec is called and adaptation.Representation_asArray.length is -1', () => {
-        const codec = dashManifestModel.getCodec({Representation_asArray: {length: -1}});
+        const codec = dashManifestModel.getCodec({ Representation_asArray: { length: -1 } });
+
+        expect(codec).to.be.null;    // jshint ignore:line
+    });
+
+    it('should return null when getCodec is called and representationId is not an integer', () => {
+        const codec = dashManifestModel.getCodec({ Representation_asArray: { length: 1 } }, true);
 
         expect(codec).to.be.null;    // jshint ignore:line
     });
@@ -244,7 +221,7 @@ describe('DashManifestModel', function () {
     });
 
     it('should return null when getMimeType is called and adaptation.Representation_asArray.length is -1', () => {
-        const mimeType = dashManifestModel.getMimeType({Representation_asArray: {length: -1}});
+        const mimeType = dashManifestModel.getMimeType({ Representation_asArray: { length: -1 } });
 
         expect(mimeType).to.be.null;    // jshint ignore:line
     });
@@ -358,11 +335,174 @@ describe('DashManifestModel', function () {
         expect(mpd.manifest).to.be.null;                // jshint ignore:line
     });
 
+    it('should return an error when getRegularPeriods and getEndTimeForLastPeriod are called and duration is undefined', () => {
+        const manifest = {
+            'manifest': {
+                'Period': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153202'
+                    }
+                ],
+                'Period_asArray': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153202'
+                    }
+                ],
+                'type': 'static'
+            },
+            'maxSegmentDuration': 4.5,
+            'mediaPresentationDuration': 300.0
+        };
+        dashManifestModel.getRegularPeriods(manifest);
+
+        expect(errorHandlerMock.errorValue).to.equal('Must have @mediaPresentationDuration on MPD or an explicit @duration on the last period.');
+    });
+
     it('should return an empty array when getRegularPeriods is called and mpd is undefined', () => {
         const periodsArray = dashManifestModel.getRegularPeriods();
 
         expect(periodsArray).to.be.instanceOf(Array);    // jshint ignore:line
         expect(periodsArray).to.be.empty;                // jshint ignore:line
+    });
+
+    it('should return just the first period when type is static and neither start nor duration period attributes are provided', () => {
+        const manifest = {
+            'manifest': {
+                'Period': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153202'
+                    }
+                ],
+                'Period_asArray': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153202'
+                    }
+                ],
+                'type': 'static',
+                'mediaPresentationDuration': 300.0
+            },
+            'maxSegmentDuration': 4.5,
+            'mediaPresentationDuration': 300.0
+        };
+
+        const periodsArray = dashManifestModel.getRegularPeriods(manifest);
+
+        expect(periodsArray).to.be.instanceOf(Array);    // jshint ignore:line
+        expect(periodsArray).to.have.lengthOf(1);        // jshint ignore:line
+        expect(periodsArray[0].start).to.equals(0);
+        expect(periodsArray[0].duration).to.equals(300);
+    });
+
+    it('should calculate period start and duration properties of periods when duration properties are provided for all but the latest', () => {
+        const manifest = {
+            'manifest': {
+                'Period': [
+                    {
+                        'id': '153199',
+                        'duration': 100
+                    },
+                    {
+                        'id': '153200',
+                        'duration': 50
+                    },
+                    {
+                        'id': '153201'
+                    }
+                ],
+                'Period_asArray': [
+                    {
+                        'id': '153199',
+                        'duration': 100
+                    },
+                    {
+                        'id': '153200',
+                        'duration': 50
+                    },
+                    {
+                        'id': '153201'
+                    }
+                ],
+                'type': 'static',
+                'mediaPresentationDuration': 320.0
+            },
+            'maxSegmentDuration': 4.5,
+            'mediaPresentationDuration': 320.0
+        };
+        const periodsArray = dashManifestModel.getRegularPeriods(manifest);
+
+        expect(periodsArray).to.be.instanceOf(Array);    // jshint ignore:line
+        expect(periodsArray).to.have.lengthOf(3);        // jshint ignore:line
+
+        expect(periodsArray[0].start).to.equals(0);
+        expect(periodsArray[0].duration).to.equals(100);
+
+        expect(periodsArray[1].start).to.equals(100);
+        expect(periodsArray[1].duration).to.equals(50);
+
+        expect(periodsArray[2].start).to.equals(150);
+        expect(periodsArray[2].duration).to.equals(170);
+    });
+
+    it('should calculate period start and duration properties of periods when start properties are provided for all but the first', () => {
+        const manifest = {
+            'manifest': {
+                'Period': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153200',
+                        'start': 80
+                    },
+                    {
+                        'id': '153201',
+                        'start': 120
+                    }
+                ],
+                'Period_asArray': [
+                    {
+                        'id': '153199'
+                    },
+                    {
+                        'id': '153200',
+                        'start': 80
+                    },
+                    {
+                        'id': '153201',
+                        'start': 120
+                    }
+                ],
+                'type': 'static',
+                'mediaPresentationDuration': 300.0
+            },
+            'maxSegmentDuration': 4.5,
+            'mediaPresentationDuration': 300.0
+        };
+        const periodsArray = dashManifestModel.getRegularPeriods(manifest);
+
+        expect(periodsArray).to.be.instanceOf(Array);    // jshint ignore:line
+        expect(periodsArray).to.have.lengthOf(3);        // jshint ignore:line
+
+        expect(periodsArray[0].start).to.equals(0);
+        expect(periodsArray[0].duration).to.equals(80);
+
+        expect(periodsArray[1].start).to.equals(80);
+        expect(periodsArray[1].duration).to.equals(40);
+
+        expect(periodsArray[2].start).to.equals(120);
+        expect(periodsArray[2].duration).to.equals(180);
     });
 
     it('should return an empty array when getAdaptationsForPeriod is called and period is undefined', () => {
@@ -552,9 +692,9 @@ describe('DashManifestModel', function () {
             const TEST_WEIGHT = 2;
             const node = {
                 BaseURL_asArray: [{
-                    __text:         TEST_URL,
+                    __text: TEST_URL,
                     'dvb:priority': TEST_PRIORITY,
-                    'dvb:weight':   TEST_WEIGHT
+                    'dvb:weight': TEST_WEIGHT
                 }]
             };
 

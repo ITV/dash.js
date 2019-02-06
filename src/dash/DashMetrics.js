@@ -31,7 +31,7 @@
 import {HTTPRequest} from '../streaming/vo/metrics/HTTPRequest';
 import FactoryMaker from '../core/FactoryMaker';
 import MetricsConstants from '../streaming/constants/MetricsConstants';
-import { round10 } from 'round10';
+import Round10 from './utils/Round10';
 
 /**
  * @module DashMetrics
@@ -44,10 +44,17 @@ function DashMetrics(config) {
     let dashManifestModel = config.dashManifestModel;
     let manifestModel = config.manifestModel;
 
+    function getPeriod(periodId) {
+        const manifest = manifestModel.getValue();
+        if (!manifest) {
+            return -1;
+        }
+        return manifest.Period_asArray[periodId];
+    }
+
     function getBandwidthForRepresentation(representationId, periodId) {
         let representation;
-        const manifest = manifestModel.getValue();
-        let period = manifest.Period_asArray[periodId];
+        let period = getPeriod(periodId);
 
         representation = findRepresentation(period, representationId);
 
@@ -58,7 +65,6 @@ function DashMetrics(config) {
         return representation.bandwidth;
     }
 
-
     /**
      *
      * @param {string} representationId
@@ -66,12 +72,9 @@ function DashMetrics(config) {
      * @returns {*}
      */
     function getIndexForRepresentation(representationId, periodIdx) {
-        let representationIndex;
-        const manifest = manifestModel.getValue();
-        let period = manifest.Period_asArray[periodIdx];
+        let period = getPeriod(periodIdx);
 
-        representationIndex = findRepresentationIndex(period, representationId);
-        return representationIndex;
+        return findRepresentationIndex(period, representationId);
     }
 
     /**
@@ -84,12 +87,9 @@ function DashMetrics(config) {
      * @instance
      */
     function getMaxIndexForBufferType(bufferType, periodIdx) {
-        let maxIndex;
-        const manifest = manifestModel.getValue();
-        let period = manifest.Period_asArray[periodIdx];
+        let period = getPeriod(periodIdx);
 
-        maxIndex = findMaxBufferIndex(period, bufferType);
-        return maxIndex;
+        return findMaxBufferIndex(period, bufferType);
     }
 
     /**
@@ -122,7 +122,7 @@ function DashMetrics(config) {
         const vo = getLatestBufferLevelVO(metrics);
 
         if (vo) {
-            return round10(vo.level / 1000, -3);
+            return Round10.round10(vo.level / 1000, -3);
         }
 
         return 0;
@@ -200,17 +200,11 @@ function DashMetrics(config) {
 
         const list = metrics[metricName];
 
-        if (!list) {
+        if (!list || list.length <= 0) {
             return null;
         }
 
-        const length = list.length;
-
-        if (length <= 0) {
-            return null;
-        }
-
-        return list[length - 1];
+        return list[list.length - 1];
     }
 
     /**

@@ -29,6 +29,7 @@
 *  POSSIBILITY OF SUCH DAMAGE.
 */
 import FactoryMaker from '../../core/FactoryMaker';
+import { checkInteger } from '../utils/SupervisorTools';
 
 function CustomTimeRanges(/*config*/) {
     let customTimeRangeArray = [];
@@ -68,20 +69,20 @@ function CustomTimeRanges(/*config*/) {
                 this.customTimeRangeArray.splice(i,1);
                 i--;
 
-            }else if (start > this.customTimeRangeArray[i].start && end < this.customTimeRangeArray[i].end) {
+            } else if (start > this.customTimeRangeArray[i].start && end < this.customTimeRangeArray[i].end) {
                 //|-----------------Range i----------------|
                 //        |-------Range to remove -----|
                 this.customTimeRangeArray.splice(i + 1, 0, {start: end,end: this.customTimeRangeArray[i].end});
                 this.customTimeRangeArray[i].end = start;
                 break;
-            }else if ( start > this.customTimeRangeArray[i].start && start < this.customTimeRangeArray[i].end) {
+            } else if ( start > this.customTimeRangeArray[i].start && start < this.customTimeRangeArray[i].end) {
                 //|-----------Range i----------|
                 //                    |---------Range to remove --------|
                 //    or
                 //|-----------------Range i----------------|
                 //            |-------Range to remove -----|
                 this.customTimeRangeArray[i].end = start;
-            }else if ( end > this.customTimeRangeArray[i].start && end < this.customTimeRangeArray[i].end) {
+            } else if ( end > this.customTimeRangeArray[i].start && end < this.customTimeRangeArray[i].end) {
                 //                     |-----------Range i----------|
                 //|---------Range to remove --------|
                 //            or
@@ -125,16 +126,8 @@ function CustomTimeRanges(/*config*/) {
         return false;
     }
 
-    function checkIndex(index) {
-        const isInt = index !== null && !isNaN(index) && (index % 1 === 0);
-
-        if (!isInt) {
-            throw new Error('index argument is not an integer');
-        }
-    }
-
     function start(index) {
-        checkIndex(index);
+        checkInteger(index);
 
         if (index >= this.customTimeRangeArray.length || index < 0) {
             return NaN;
@@ -144,7 +137,7 @@ function CustomTimeRanges(/*config*/) {
     }
 
     function end(index) {
-        checkIndex(index);
+        checkInteger(index);
 
         if (index >= this.customTimeRangeArray.length || index < 0) {
             return NaN;

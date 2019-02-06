@@ -38,9 +38,8 @@ import ReportingFactory from './reporting/ReportingFactory';
 function MetricsReporting() {
 
     let context = this.context;
-    let instance;
-
-    let dvbErrorsTranslator;
+    let instance,
+        dvbErrorsTranslator;
 
     /**
      * Create a MetricsCollectionController, and a DVBErrorsTranslator
@@ -84,7 +83,7 @@ function MetricsReporting() {
 }
 
 MetricsReporting.__dashjs_factory_name = 'MetricsReporting';
-let factory = dashjs.FactoryMaker.getClassFactory(MetricsReporting); /* jshint ignore:line */
+const factory = dashjs.FactoryMaker.getClassFactory(MetricsReporting); /* jshint ignore:line */
 factory.events = MetricsReportingEvents;
 dashjs.FactoryMaker.updateClassFactory(MetricsReporting.__dashjs_factory_name, factory); /* jshint ignore:line */
 export default factory;

@@ -1,3 +1,5 @@
+import ThroughputHistoryMock from './ThroughputHistoryMock';
+
 const ABANDON_LOAD = 'abandonload';
 const QUALITY_DEFAULT = 0;
 
@@ -40,6 +42,8 @@ class AbrControllerMock{
     setConfig() {}
 
     getTopQualityIndexFor() {}
+
+    getTopBitrateInfoFor() {}
 
     getInitialBitrateFor(type) {
         if (!this.bitrateDict.hasOwnProperty(type)) {
@@ -132,10 +136,7 @@ class AbrControllerMock{
         this.usePixelRatioInLimitBitrateByPortal = value;
     }
 
-
-    checkPlaybackQuality() {
-
-    }
+    checkPlaybackQuality() {}
 
     setPlaybackQuality(type, streamInfo, newQuality) {
         this.setQualityFor(type,streamInfo.id,newQuality);
@@ -200,6 +201,12 @@ class AbrControllerMock{
     getElementHeight() {
         return this.elementHeight;
     }
+
+    registerStreamType() {
+        this.throughputHistory = new ThroughputHistoryMock();
+    }
+
+    getMinAllowedIndexFor() {}
 }
 
 export default AbrControllerMock;

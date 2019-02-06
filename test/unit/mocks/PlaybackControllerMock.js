@@ -55,6 +55,10 @@ class PlaybackControllerMock {
         return null;
     }
 
+    getNormalizedTime() {
+        return null;
+    }
+
     getPlaybackRate() {
         return null;
     }

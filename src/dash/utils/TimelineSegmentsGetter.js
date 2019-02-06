@@ -30,6 +30,7 @@
  */
 
 import FactoryMaker from '../../core/FactoryMaker';
+import Constants from '../../streaming/constants/Constants';
 
 import {getTimeBasedSegment} from './SegmentsUtils';
 
@@ -41,9 +42,9 @@ function TimelineSegmentsGetter(config, isDynamic) {
     let instance;
 
     function checkConfig() {
-        if (!timelineConverter || !timelineConverter.hasOwnProperty('calcMediaTimeFromPresentationTime') || !timelineConverter.hasOwnProperty('calcSegmentAvailabilityRange') ||
-            !timelineConverter.hasOwnProperty('calcMediaTimeFromPresentationTime')) {
-            throw new Error('Missing config parameter(s)');
+        if (!timelineConverter || !timelineConverter.hasOwnProperty('calcMediaTimeFromPresentationTime') ||
+            !timelineConverter.hasOwnProperty('calcSegmentAvailabilityRange')) {
+            throw new Error(Constants.MISSING_CONFIG_ERROR);
         }
     }
 
@@ -131,13 +132,13 @@ function TimelineSegmentsGetter(config, isDynamic) {
                 repeat = frag.r;
             }
 
-            //For a repeated S element, t belongs only to the first segment
+            // For a repeated S element, t belongs only to the first segment
             if (frag.hasOwnProperty('t')) {
                 time = frag.t;
                 scaledTime = time / fTimescale;
             }
 
-            //This is a special case: "A negative value of the @r attribute of the S element indicates that the duration indicated in @d attribute repeats until the start of the next S element, the end of the Period or until the
+            // This is a special case: "A negative value of the @r attribute of the S element indicates that the duration indicated in @d attribute repeats until the start of the next S element, the end of the Period or until the
             // next MPD update."
             if (repeat < 0) {
                 nextFrag = fragments[i + 1];

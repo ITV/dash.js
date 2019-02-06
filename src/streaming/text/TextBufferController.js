@@ -38,9 +38,8 @@ function TextBufferController(config) {
     config = config || {};
     let context = this.context;
 
-    let _BufferControllerImpl;
-
-    let instance;
+    let _BufferControllerImpl,
+        instance;
 
     function setup() {
 
@@ -53,7 +52,6 @@ function TextBufferController(config) {
                 metricsModel: config.metricsModel,
                 mediaPlayerModel: config.mediaPlayerModel,
                 manifestModel: config.manifestModel,
-                sourceBufferController: config.sourceBufferController,
                 errHandler: config.errHandler,
                 streamController: config.streamController,
                 mediaController: config.mediaController,
@@ -68,8 +66,8 @@ function TextBufferController(config) {
             // in this case, internal buffer controller is a not fragmented text controller object
             _BufferControllerImpl = NotFragmentedTextBufferController(context).create({
                 type: config.type,
+                mimeType: config.mimeType,
                 errHandler: config.errHandler,
-                sourceBufferController: config.sourceBufferController,
                 streamProcessor: config.streamProcessor
             });
         }
@@ -136,6 +134,25 @@ function TextBufferController(config) {
         _BufferControllerImpl.switchInitData(streamId, representationId);
     }
 
+    function getIsPruningInProgress() {
+        return _BufferControllerImpl.getIsPruningInProgress();
+    }
+
+    function dischargePreBuffer() {
+        return _BufferControllerImpl.dischargePreBuffer();
+    }
+
+    function getRangeAt(time) {
+        return _BufferControllerImpl.getRangeAt(time);
+    }
+
+    function updateTimestampOffset(MSETimeOffset) {
+        const buffer = getBuffer();
+        if (buffer.timestampOffset !== MSETimeOffset && !isNaN(MSETimeOffset)) {
+            buffer.timestampOffset = MSETimeOffset;
+        }
+    }
+
     instance = {
         getBufferControllerType: getBufferControllerType,
         initialize: initialize,
@@ -149,8 +166,12 @@ function TextBufferController(config) {
         setMediaSource: setMediaSource,
         getMediaSource: getMediaSource,
         getIsBufferingCompleted: getIsBufferingCompleted,
+        getIsPruningInProgress: getIsPruningInProgress,
+        dischargePreBuffer: dischargePreBuffer,
         switchInitData: switchInitData,
-        reset: reset
+        getRangeAt: getRangeAt,
+        reset: reset,
+        updateTimestampOffset: updateTimestampOffset
     };
 
     setup();

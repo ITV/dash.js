@@ -29,17 +29,15 @@
  *  POSSIBILITY OF SUCH DAMAGE.
  */
 import Constants from '../../streaming/constants/Constants';
+import Errors from '../../core/errors/Errors';
 import DashConstants from '../constants/DashConstants';
 import DashJSError from '../../streaming/vo/DashJSError';
 import EventBus from '../../core/EventBus';
 import Events from '../../core/events/Events';
-import MediaPlayerEvents from '../../streaming/MediaPlayerEvents';
 import FactoryMaker from '../../core/FactoryMaker';
 import Representation from '../vo/Representation';
 
 function RepresentationController() {
-
-    const SEGMENTS_UPDATE_FAILED_ERROR_CODE = 1;
 
     let context = this.context;
     let eventBus = EventBus(context).getInstance();
@@ -68,6 +66,7 @@ function RepresentationController() {
         eventBus.on(Events.REPRESENTATION_UPDATED, onRepresentationUpdated, instance);
         eventBus.on(Events.WALLCLOCK_TIME_UPDATED, onWallclockTimeUpdated, instance);
         eventBus.on(Events.BUFFER_LEVEL_UPDATED, onBufferLevelUpdated, instance);
+        eventBus.on(Events.MANIFEST_VALIDITY_CHANGED, onManifestValidityChanged, instance);
     }
 
     function setConfig(config) {
@@ -145,6 +144,7 @@ function RepresentationController() {
         eventBus.off(Events.REPRESENTATION_UPDATED, onRepresentationUpdated, instance);
         eventBus.off(Events.WALLCLOCK_TIME_UPDATED, onWallclockTimeUpdated, instance);
         eventBus.off(Events.BUFFER_LEVEL_UPDATED, onBufferLevelUpdated, instance);
+        eventBus.off(Events.MANIFEST_VALIDITY_CHANGED, onManifestValidityChanged, instance);
 
         resetInitialSettings();
     }
@@ -193,23 +193,23 @@ function RepresentationController() {
     }
 
     function addRepresentationSwitch() {
-        let now = new Date();
-        let currentRepresentation = getCurrentRepresentation();
-        let currentVideoTimeMs = playbackController.getTime() * 1000;
+        const now = new Date();
+        const currentRepresentation = getCurrentRepresentation();
+        const currentVideoTimeMs = playbackController.getTime() * 1000;
 
         metricsModel.addRepresentationSwitch(currentRepresentation.adaptation.type, now, currentVideoTimeMs, currentRepresentation.id);
     }
 
     function addDVRMetric() {
-        let streamInfo = streamProcessor.getStreamInfo();
-        let manifestInfo = streamInfo ? streamInfo.manifestInfo : null;
-        let isDynamic = manifestInfo ? manifestInfo.isDynamic : null;
-        let range = timelineConverter.calcSegmentAvailabilityRange(currentVoRepresentation, isDynamic);
+        const streamInfo = streamProcessor.getStreamInfo();
+        const manifestInfo = streamInfo ? streamInfo.manifestInfo : null;
+        const isDynamic = manifestInfo ? manifestInfo.isDynamic : null;
+        const range = timelineConverter.calcSegmentAvailabilityRange(currentVoRepresentation, isDynamic);
         metricsModel.addDVRInfo(streamProcessor.getType(), playbackController.getTime(), manifestInfo, range);
     }
 
     function getRepresentationForQuality(quality) {
-        return voAvailableRepresentations[quality];
+        return quality === null || quality === undefined || quality >= voAvailableRepresentations.length ? null : voAvailableRepresentations[quality];
     }
 
     function getQualityForRepresentation(voRepresentation) {
@@ -271,7 +271,7 @@ function RepresentationController() {
         };
 
         updating = false;
-        eventBus.trigger(MediaPlayerEvents.AST_IN_FUTURE, { delay: delay });
+        eventBus.trigger(Events.AST_IN_FUTURE, { delay: delay });
         setTimeout(update, delay);
     }
 
@@ -299,7 +299,7 @@ function RepresentationController() {
         if (postponeTimePeriod > 0) {
             addDVRMetric();
             postponeUpdate(postponeTimePeriod);
-            err = new DashJSError(SEGMENTS_UPDATE_FAILED_ERROR_CODE, 'Segments update failed', null);
+            err = new DashJSError(Errors.SEGMENTS_UPDATE_FAILED_ERROR_CODE, Errors.SEGMENTS_UPDATE_FAILED_ERROR_MESSAGE);
             eventBus.trigger(Events.DATA_UPDATE_COMPLETED, {sender: this, data: realAdaptation, currentRepresentation: currentVoRepresentation, error: err});
 
             return;
@@ -359,6 +359,16 @@ function RepresentationController() {
                 domStorage.setSavedBitrateSettings(e.mediaType, bitrate);
             }
             addRepresentationSwitch();
+        }
+    }
+
+    function onManifestValidityChanged(e) {
+        if (e.newDuration) {
+            const representation = getCurrentRepresentation();
+            if (representation && representation.adaptation.period) {
+                const period = representation.adaptation.period;
+                period.duration = e.newDuration;
+            }
         }
     }
 

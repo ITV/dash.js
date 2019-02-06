@@ -39,10 +39,11 @@
  */
 import ProtectionKeyController from '../controllers/ProtectionKeyController';
 import NeedKey from '../vo/NeedKey';
-import KeyError from '../vo/KeyError';
+import DashJSError from '../../vo/DashJSError';
 import KeyMessage from '../vo/KeyMessage';
 import KeySystemConfiguration from '../vo/KeySystemConfiguration';
 import KeySystemAccess from '../vo/KeySystemAccess';
+import ProtectionErrors from '../errors/ProtectionErrors';
 
 function ProtectionModel_01b(config) {
 
@@ -50,11 +51,12 @@ function ProtectionModel_01b(config) {
     const context = this.context;
     const eventBus = config.eventBus;//Need to pass in here so we can use same instance since this is optional module
     const events = config.events;
-    const log = config.log;
+    const debug = config.debug;
     const api = config.api;
     const errHandler = config.errHandler;
 
     let instance,
+        logger,
         videoElement,
         keySystem,
         protectionKeyController,
@@ -83,6 +85,7 @@ function ProtectionModel_01b(config) {
         eventHandler;
 
     function setup() {
+        logger = debug.getLogger(instance);
         videoElement = null;
         keySystem = null;
         pendingSessions = [];
@@ -180,6 +183,12 @@ function ProtectionModel_01b(config) {
         // Replacing the previous element
         if (videoElement) {
             removeEventListeners();
+
+            // Close any open sessions - avoids memory leak on LG webOS 2016/2017 TVs
+            for (var i = 0; i < sessions.length; i++) {
+                closeKeySession(sessions[i]);
+            }
+            sessions = [];
         }
 
         videoElement = mediaElement;
@@ -246,7 +255,11 @@ function ProtectionModel_01b(config) {
 
     function closeKeySession(sessionToken) {
         // Send our request to the CDM
-        videoElement[api.cancelKeyRequest](keySystem.systemString, sessionToken.sessionID);
+        try {
+            videoElement[api.cancelKeyRequest](keySystem.systemString, sessionToken.sessionID);
+        } catch (error) {
+            eventBus.trigger(events.KEY_SESSION_CLOSED, {data: null, error: 'Error closing session (' + sessionToken.sessionID + ') ' + error.message});
+        }
     }
 
     function setServerCertificate(/*serverCertificate*/) { /* Not supported */ }
@@ -270,32 +283,39 @@ function ProtectionModel_01b(config) {
                         }
 
                         if (sessionToken) {
+                            let code = ProtectionErrors.MEDIA_KEYERR_CODE;
                             let msg = '';
                             switch (event.errorCode.code) {
                                 case 1:
-                                    msg += 'MEDIA_KEYERR_UNKNOWN - An unspecified error occurred. This value is used for errors that don\'t match any of the other codes.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_UNKNOWN_CODE;
+                                    msg += 'MEDIA_KEYERR_UNKNOWN - ' + ProtectionErrors.MEDIA_KEYERR_UNKNOWN_MESSAGE;
                                     break;
                                 case 2:
-                                    msg += 'MEDIA_KEYERR_CLIENT - The Key System could not be installed or updated.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_CLIENT_CODE;
+                                    msg += 'MEDIA_KEYERR_CLIENT - ' + ProtectionErrors.MEDIA_KEYERR_CLIENT_MESSAGE;
                                     break;
                                 case 3:
-                                    msg += 'MEDIA_KEYERR_SERVICE - The message passed into update indicated an error from the license service.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_SERVICE_CODE;
+                                    msg += 'MEDIA_KEYERR_SERVICE - ' + ProtectionErrors.MEDIA_KEYERR_SERVICE_MESSAGE;
                                     break;
                                 case 4:
-                                    msg += 'MEDIA_KEYERR_OUTPUT - There is no available output device with the required characteristics for the content protection system.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_OUTPUT_CODE;
+                                    msg += 'MEDIA_KEYERR_OUTPUT - ' + ProtectionErrors.MEDIA_KEYERR_OUTPUT_MESSAGE;
                                     break;
                                 case 5:
-                                    msg += 'MEDIA_KEYERR_HARDWARECHANGE - A hardware configuration change caused a content protection error.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_HARDWARECHANGE_CODE;
+                                    msg += 'MEDIA_KEYERR_HARDWARECHANGE - ' + ProtectionErrors.MEDIA_KEYERR_HARDWARECHANGE_MESSAGE;
                                     break;
                                 case 6:
-                                    msg += 'MEDIA_KEYERR_DOMAIN - An error occurred in a multi-device domain licensing configuration. The most common error is a failure to join the domain.';
+                                    code = ProtectionErrors.MEDIA_KEYERR_DOMAIN_CODE;
+                                    msg += 'MEDIA_KEYERR_DOMAIN - ' + ProtectionErrors.MEDIA_KEYERR_DOMAIN_MESSAGE;
                                     break;
                             }
                             msg += '  System Code = ' + event.systemCode;
                             // TODO: Build error string based on key error
-                            eventBus.trigger(events.KEY_ERROR, {data: new KeyError(sessionToken, msg)});
+                            eventBus.trigger(events.KEY_ERROR, {data: new DashJSError(code, msg, sessionToken)});
                         } else {
-                            log('No session token found for key error');
+                            logger.error('No session token found for key error');
                         }
                         break;
 
@@ -306,10 +326,10 @@ function ProtectionModel_01b(config) {
                         }
 
                         if (sessionToken) {
-                            log('DRM: Key added.');
+                            logger.debug('DRM: Key added.');
                             eventBus.trigger(events.KEY_ADDED, {data: sessionToken});//TODO not sure anything is using sessionToken? why there?
                         } else {
-                            log('No session token found for key added');
+                            logger.debug('No session token found for key added');
                         }
                         break;
 
@@ -329,13 +349,16 @@ function ProtectionModel_01b(config) {
                                 sessionToken = pendingSessions.shift();
                                 sessions.push(sessionToken);
                                 sessionToken.sessionID = event.sessionId;
+
+                                eventBus.trigger(events.KEY_SESSION_CREATED, {data: sessionToken});
                             }
                         } else if (pendingSessions.length > 0) { // SessionIDs not supported
                             sessionToken = pendingSessions.shift();
                             sessions.push(sessionToken);
 
                             if (pendingSessions.length !== 0) {
-                                errHandler.mediaKeyMessageError('Multiple key sessions were creates with a user-agent that does not support sessionIDs!! Unpredictable behavior ahead!');
+                                errHandler.mediaKeyMessageError(ProtectionErrors.MEDIA_KEY_MESSAGE_ERROR_MESSAGE);
+                                errHandler.error(new DashJSError(ProtectionErrors.MEDIA_KEY_MESSAGE_ERROR_CODE, ProtectionErrors.MEDIA_KEY_MESSAGE_ERROR_MESSAGE));
                             }
                         }
 
@@ -349,7 +372,7 @@ function ProtectionModel_01b(config) {
                             eventBus.trigger(events.INTERNAL_KEY_MESSAGE, {data: new KeyMessage(sessionToken, message, event.defaultURL)});
 
                         } else {
-                            log('No session token found for key message');
+                            logger.warn('No session token found for key message');
                         }
                         break;
                 }
@@ -399,6 +422,7 @@ function ProtectionModel_01b(config) {
         setServerCertificate: setServerCertificate,
         loadKeySession: loadKeySession,
         removeKeySession: removeKeySession,
+        stop: reset,
         reset: reset
     };
 

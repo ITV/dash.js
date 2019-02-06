@@ -9,7 +9,7 @@ class ObjectsHelper {
         return {
             getType: () => type,
             getCurrentTrack: () => {},
-            getStreamInfo: () => { return { id: 'some_id', manifestInfo: {isDynamic: true} }; },
+            getStreamInfo: () => { return { id: 'DUMMY_STREAM-01', manifestInfo: {isDynamic: true} }; },
             getMediaInfo: () => { return { bitrateList: [
                                                 { bandwidth: 1000000 },
                                                 { bandwidth: 2000000 },
@@ -32,8 +32,15 @@ class ObjectsHelper {
 
     getDummyTimelineConverter() {
         return {
+            initialize: () => {},
+            reset: () => {},
+            getClientTimeOffset: () => {},
             calcAvailabilityStartTimeFromPresentationTime: () => 0,
-            calcAvailabilityEndTimeFromPresentationTime: () => 0
+            calcAvailabilityEndTimeFromPresentationTime: () => 0,
+            calcPeriodRelativeTimeFromMpdRelativeTime: () => NaN,
+            calcMediaTimeFromPresentationTime: () => undefined,
+            calcSegmentAvailabilityRange: () =>  { return {start: undefined, end: undefined};},
+            isTimeSyncCompleted: () => {return true;}
         };
     }
 
