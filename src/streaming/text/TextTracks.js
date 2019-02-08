@@ -430,6 +430,7 @@ function TextTracks() {
                         } else {
                             captionContainer.appendChild(this.cueHTMLElement);
                             scaleCue.call(self, this);
+                            eventBus.trigger(Events.CAPTION_RENDERED, {captionDiv: this.cueHTMLElement, currentTrackIdx});
                         }
                     }
                 };
@@ -462,6 +463,11 @@ function TextTracks() {
                             cue.size = currentItem.styles.size;
                         }
                     }
+                    cue.onenter = function () {
+                        if (track.mode === Constants.TEXT_SHOWING) {
+                            eventBus.trigger(Events.CAPTION_RENDERED, {currentTrackIdx});
+                        }
+                    };
                 }
             }
             try {
